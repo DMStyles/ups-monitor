@@ -316,3 +316,75 @@ body {
 .offline-icon { font-size: 4rem; }
 .offline-title { font-size: 1.4rem; font-weight: 700; color: var(--warn); }
 .offline-msg   { font-size: 0.9rem; color: var(--text-muted); max-width: 380px; line-height: 1.6; }
+
+/* ── UPDATE BANNER ─────────────────────── */
+.update-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.25), rgba(59, 130, 246, 0.25));
+  border: 1px solid rgba(147, 51, 234, 0.4);
+  backdrop-filter: blur(12px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 100;
+}
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.update-icon {
+  font-size: 1.25rem;
+  animation: bounce 2s infinite;
+}
+.update-message {
+  font-size: 0.95rem;
+  color: #e2e8f0;
+}
+.update-message strong {
+  color: #c084fc;
+}
+.update-btn {
+  background: linear-gradient(90deg, #9333ea, #2563eb);
+  color: #ffffff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 12px rgba(147, 51, 234, 0.4);
+  margin-left: 12px;
+}
+.update-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 18px rgba(147, 51, 234, 0.6);
+}
+.update-btn:active {
+  transform: translateY(0);
+}
+.update-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.update-close-btn:hover {
+  color: #ff5252;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}

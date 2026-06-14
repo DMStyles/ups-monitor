@@ -18,6 +18,16 @@
 
   <div class="app-wrapper">
 
+    <!-- Update notification banner -->
+    <div id="update-banner" class="update-banner" style="display: none;">
+      <div class="update-banner-content">
+        <span class="update-icon">🚀</span>
+        <span class="update-message">A new update <strong id="update-version">v1.0.0</strong> is available!</span>
+        <button class="update-btn" id="update-action-btn" onclick="performUpdate()">Update Now</button>
+      </div>
+      <button class="update-close-btn" onclick="closeUpdateBanner()">✕</button>
+    </div>
+
     <!-- ── HEADER ──────────────────────────── -->
     <header class="header">
       <div class="header-left">

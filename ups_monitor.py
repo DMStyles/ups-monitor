@@ -528,6 +528,111 @@ def api_settings():
         ELEC_RATE_LKR = float(body["elec_rate"])
     return jsonify({"ok": True, "elec_rate": ELEC_RATE_LKR})
 
+VERSION = "v1.0.0"
+
+@app.route("/api/check_update")
+def check_update():
+    try:
+        import requests
+        import re
+        r = requests.get("https://api.github.com/repos/DMStyles/ups-monitor/releases/latest", 
+                         headers={"User-Agent": "UPS-Monitor"}, timeout=5)
+        if r.status_code == 200:
+            j = r.json()
+            tag = j.get("tag_name", "v1.0.0")
+            body = j.get("body", "")
+            
+            def parse_ver(v):
+                return [int(x) for x in re.sub(r'[^\d.]', '', v).split('.')]
+                
+            try:
+                latest_nums = parse_ver(tag)
+                curr_nums = parse_ver(VERSION)
+                update_available = latest_nums > curr_nums
+            except Exception:
+                update_available = tag != VERSION
+                
+            return jsonify({
+                "update_available": update_available,
+                "latest_version": tag,
+                "current_version": VERSION,
+                "changelog": body,
+                "zipball_url": j.get("zipball_url")
+            })
+    except Exception as e:
+        log.error(f"Error checking update: {e}")
+    return jsonify({"update_available": False, "current_version": VERSION})
+
+@app.route("/api/perform_update", methods=["POST"])
+def perform_update():
+    body = request.get_json(force=True)
+    zipball_url = body.get("zipball_url")
+    if not zipball_url:
+        return jsonify({"ok": False, "error": "No zipball URL provided"}), 400
+        
+    t = threading.Thread(target=run_updater, args=(zipball_url,), daemon=True)
+    t.start()
+    return jsonify({"ok": True, "status": "updating"})
+
+def run_updater(zipball_url):
+    import urllib.request
+    import zipfile
+    import shutil
+    import tempfile
+    
+    log.info(f"Starting update process from URL: {zipball_url}")
+    try:
+        temp_dir = tempfile.mkdtemp()
+        zip_path = os.path.join(temp_dir, "update.zip")
+        
+        req = urllib.request.Request(
+            zipball_url, 
+            headers={"User-Agent": "UPS-Monitor-Updater"}
+        )
+        with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
+            
+        log.info("Update downloaded. Extracting...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+            
+        extracted_folder = None
+        for name in os.listdir(temp_dir):
+            full_path = os.path.join(temp_dir, name)
+            if os.path.isdir(full_path) and name.startswith("DMStyles-ups-monitor"):
+                extracted_folder = full_path
+                break
+                
+        if not extracted_folder:
+            log.error("Could not find extracted directory starting with DMStyles-ups-monitor")
+            return
+            
+        app_dir = str(BASE_DIR.absolute())
+        update_bat_path = os.path.join(tempfile.gettempdir(), "ups_monitor_update.bat")
+        
+        log.info(f"Writing updater batch file to {update_bat_path}...")
+        with open(update_bat_path, "w") as f:
+            f.write(f"""@echo off
+title UPS Monitor Updater
+echo Waiting for application to close...
+timeout /t 2 /nobreak >nul
+echo Copying new files...
+xcopy /y /e /q "{extracted_folder}\\*" "{app_dir}"
+echo Cleaning up...
+rmdir /s /q "{temp_dir}"
+echo Restarting UPS Power Monitor...
+start "" "{app_dir}\\start_ups_monitor.bat"
+del "%~f0"
+exit
+""")
+        
+        log.info("Launching update.bat detached and exiting.")
+        subprocess.Popen([update_bat_path], shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        os._exit(0)
+        
+    except Exception as e:
+        log.error(f"Failed to perform update: {e}")
+
 def run_flask():
     log.info(f"Flask server starting on port {DASHBOARD_PORT}")
     app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False, use_reloader=False)
@@ -553,9 +658,25 @@ def make_tray_icon(watts: float = 0, connected: bool = False) -> Image.Image:
     return img
 
 
+window = None
+
+def on_closing():
+    global window
+    try:
+        window.hide()
+    except Exception:
+        pass
+    return False
+
+
 def create_tray():
     def open_dashboard(icon, item):
-        webbrowser.open(DASHBOARD_URL)
+        global window
+        try:
+            window.show()
+            window.restore()
+        except Exception as e:
+            log.error(f"Failed to open dashboard window: {e}")
 
     def quit_app(icon, item):
         log.info("Quit requested from tray.")
@@ -604,13 +725,34 @@ def main():
     t_flask = threading.Thread(target=run_flask, daemon=True)
     t_flask.start()
 
-    # Give Flask a moment to start, then open browser
+    # Give Flask a moment to start
     time.sleep(2)
-    webbrowser.open(DASHBOARD_URL)
 
-    # Run system tray (blocks main thread)
-    log.info("Starting system tray…")
-    create_tray()
+    # Start system tray on background thread
+    log.info("Starting system tray on background thread…")
+    threading.Thread(target=create_tray, daemon=True).start()
+
+    # Create and run native pywebview window on main thread (required)
+    log.info("Starting native pywebview window…")
+    global window
+    is_minimized = "--minimized" in sys.argv
+    
+    # Import webview dynamically inside main
+    import webview
+    
+    window = webview.create_window(
+        title="UPS Power Monitor",
+        url=DASHBOARD_URL,
+        width=1100,
+        height=780,
+        resizable=True,
+        min_size=(900, 600),
+        hidden=is_minimized
+    )
+    window.events.closing += on_closing
+    
+    # Run the native webview event loop (blocks main thread until destroyed)
+    webview.start()
 
 
 if __name__ == "__main__":

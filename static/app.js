@@ -284,6 +284,76 @@ function tickCountdown() {
   if (countdown <= 0) countdown = 5;
 }
 
+// ── Auto-Updater ────────────────────────────
+let updateDetails = null;
+
+async function checkUpdate() {
+  try {
+    const res = await fetch('/api/check_update');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.update_available) {
+      updateDetails = data;
+      const banner = document.getElementById('update-banner');
+      const versionEl = document.getElementById('update-version');
+      if (banner && versionEl) {
+        versionEl.textContent = data.latest_version;
+        banner.style.display = 'flex';
+      }
+    }
+  } catch (err) {
+    console.error('Error checking for updates:', err);
+  }
+}
+
+async function performUpdate() {
+  if (!updateDetails || !updateDetails.zipball_url) return;
+  
+  const btn = document.getElementById('update-action-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Updating…';
+  }
+  
+  try {
+    const res = await fetch('/api/perform_update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zipball_url: updateDetails.zipball_url })
+    });
+    
+    if (res.ok) {
+      const banner = document.getElementById('update-banner');
+      if (banner) {
+        banner.innerHTML = `
+          <div class="update-banner-content" style="width: 100%; justify-content: center; padding: 4px 0;">
+            <span class="update-icon">⚡</span>
+            <span class="update-message" style="margin-left: 8px;">Installing update… The app will restart automatically in a few seconds.</span>
+          </div>
+        `;
+      }
+    } else {
+      alert('Failed to start update.');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Update Now';
+      }
+    }
+  } catch (err) {
+    console.error('Error performing update:', err);
+    alert('An error occurred during update.');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Update Now';
+    }
+  }
+}
+
+function closeUpdateBanner() {
+  const banner = document.getElementById('update-banner');
+  if (banner) banner.style.display = 'none';
+}
+
 // ── Init & refresh loop ──────────────────
 async function refresh() {
   await fetchStatus();
@@ -301,6 +371,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Initial load
   await refresh();
   await refreshCharts();
+  
+  // Check for updates on startup
+  checkUpdate();
 
   // Status refresh every 5s
   setInterval(async () => {
@@ -315,3 +388,5 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 // Expose for inline onclick
 window.saveRate = saveRate;
+window.performUpdate = performUpdate;
+window.closeUpdateBanner = closeUpdateBanner;
