@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# SQLite databases
+*.db
+*.sqlite3
+
+# Logs and test outputs
+*.log
+pythonw_err.txt
+pythonw_out.txt
+python_out.txt
+test_error.txt
+test_output.txt
+python_path.txt
+
+# Virtual Environment
+venv/
+.venv/
+env/
+.env
+
+# IDE / Editor configuration
+.idea/
+.vscode/
+.project
+.pydevproject
