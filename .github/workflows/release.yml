@@ -1,0 +1,81 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flask requests pywebview pystray pillow beautifulsoup4 pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller ups_monitor.spec --clean --noconfirm
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --yes --no-progress
+        continue-on-error: true
+
+      - name: Build installer with Inno Setup
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) {
+            & $iscc installer.iss
+          } else {
+            Write-Host "Inno Setup not found, skipping installer build"
+          }
+        shell: pwsh
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Upload installer to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: UPS Power Monitor ${{ github.ref_name }}
+          body: |
+            ## UPS Power Monitor ${{ github.ref_name }}
+
+            ### Installation
+            1. Download `UPS-Power-Monitor-Setup-*.exe` below
+            2. Run the installer — it handles everything automatically
+            3. UPS Power Monitor will start after installation
+
+            ### Requirements
+            - Windows 10 / 11 (64-bit)
+            - Microsoft Edge WebView2 Runtime (pre-installed on Win10 20H2+)
+            - ViewPower software running on the same machine
+
+            ### What's included
+            - Standalone app (no Python required)
+            - Desktop shortcut
+            - Optional autostart at login
+            - Built-in auto-updater — checks GitHub for new releases
+
+            ### Changelog
+            - Initial release 🎉
+          files: |
+            release/UPS-Power-Monitor-Setup-*.exe
+          draft: false
+          prerelease: false

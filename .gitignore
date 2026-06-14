@@ -27,3 +27,13 @@ env/
 .vscode/
 .project
 .pydevproject
+
+# PyInstaller build artifacts
+build/
+dist/
+
+# Release binaries (uploaded as GitHub Release assets, not tracked in git)
+release/
+
+# Inno Setup temp files
+Output/
