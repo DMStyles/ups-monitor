@@ -1,93 +1,318 @@
 """
-UPS Power Monitor - Main Backend
-Communicates with ViewPower (localhost:15178) to track UPS data,
-calculates daily energy usage, and serves a local web dashboard.
-Runs as a Windows system tray application.
+UPS Power Monitor v1.1.0
+Standalone Windows desktop app — monitors UPS via ViewPower.
+Features: real-time dashboard, analytics, outage log, auto-updater, tray.
 """
 
 import os
 import sys
 import json
+import re
 import time
 import sqlite3
 import logging
 import threading
-import webbrowser
 import subprocess
+import winreg
 from datetime import datetime, date, timedelta
+from io import StringIO
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, jsonify, render_template, request
-from PIL import Image, ImageDraw, ImageFont
+from flask import Flask, jsonify, render_template, request, Response
+from PIL import Image, ImageDraw
 import pystray
 
-# ─────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────
-VIEWPOWER_BASE   = "http://localhost:15178/ViewPower"
-DASHBOARD_PORT   = 8765
-DASHBOARD_URL    = f"http://localhost:{DASHBOARD_PORT}"
-POLL_INTERVAL    = 30          # seconds between ViewPower polls
-UPS_VA           = 1200        # VA rating of your Prolink UPS
-POWER_FACTOR     = 0.6         # standard line-interactive PF
-MAX_WATTS        = UPS_VA * POWER_FACTOR   # 720 W
-ELEC_RATE_LKR    = 30.0        # LKR per kWh (Sri Lanka domestic avg — change to your rate)
+# ══════════════════════════════════════════════════════
+#  VERSION
+# ══════════════════════════════════════════════════════
+VERSION = "v1.1.0"
 
+# ══════════════════════════════════════════════════════
+#  UPS MODEL DATABASE  (add more models here later)
+# ══════════════════════════════════════════════════════
+UPS_MODELS = {
+    "Prolink PRO1201SFC": {
+        "va":            1200,
+        "power_factor":  0.7,
+        "max_watts":     840,
+        "battery_wh":    196.8,          # 2 × 12 V × 8.2 Ah
+        "battery_desc":  "2 × 12 V / 8.2 Ah",
+        "input_range":   "140–300 VAC",
+        "output_voltage":"230 VAC ± 10 %",
+        "waveform":      "Simulated Sine (battery) / Pure Sine (line)",
+        "transfer_time": "≤ 2 ms",
+        "recharge_time": "2–4 h to 90 %",
+    },
+}
+
+# ══════════════════════════════════════════════════════
+#  PATHS
+# ══════════════════════════════════════════════════════
 BASE_DIR  = Path(__file__).parent
-DB_PATH   = BASE_DIR / "energy.db"
-LOG_PATH  = BASE_DIR / "ups_monitor.log"
+APP_NAME  = "UPS Power Monitor"
+DATA_DIR  = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+DB_PATH       = DATA_DIR / "energy.db"
+LOG_PATH      = DATA_DIR / "ups_monitor.log"
+SETTINGS_PATH = DATA_DIR / "settings.json"
+
+# ══════════════════════════════════════════════════════
+#  LOGGING
+# ══════════════════════════════════════════════════════
 logging.basicConfig(
-    filename=LOG_PATH,
+    filename=str(LOG_PATH),
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────
-#  GLOBAL STATE  (thread-safe via lock)
-# ─────────────────────────────────────────────
-state_lock = threading.Lock()
-ups_state = {
-    "connected":        False,
-    "ups_mode":         "Unknown",
-    "input_voltage":    0.0,
-    "output_voltage":   0.0,
-    "frequency":        0.0,
-    "load_percent":     0,
-    "watts":            0.0,
-    "battery_voltage":  0.0,
-    "battery_capacity": 0,
-    "max_watts":        MAX_WATTS,
-    "last_update":      None,
-    "device_id":        None,
+# ══════════════════════════════════════════════════════
+#  SETTINGS
+# ══════════════════════════════════════════════════════
+DEFAULT_SETTINGS = {
+    "ups_model":             "Prolink PRO1201SFC",
+    "elec_rate":             30.0,
+    "fast_poll_interval":    2,
+    "db_write_interval":     60,
+    "autostart":             False,
+    "notifications_enabled": True,
+    "low_battery_threshold": 20,
+    "ntfy_topic":            "",
+    "auto_shutdown_enabled": False,
+    "auto_shutdown_pct":     10,
+    "auto_shutdown_mins":    5,
 }
 
+settings: dict = {}
 
-# ─────────────────────────────────────────────
+
+def load_settings() -> dict:
+    try:
+        if SETTINGS_PATH.exists():
+            with open(SETTINGS_PATH) as f:
+                saved = json.load(f)
+            return {**DEFAULT_SETTINGS, **saved}
+    except Exception as e:
+        log.error(f"Settings load error: {e}")
+    return dict(DEFAULT_SETTINGS)
+
+
+def save_settings(s: dict):
+    try:
+        with open(SETTINGS_PATH, "w") as f:
+            json.dump(s, f, indent=2)
+    except Exception as e:
+        log.error(f"Settings save error: {e}")
+
+
+settings = load_settings()
+
+
+def get_model_cfg() -> dict:
+    model = settings.get("ups_model", "Prolink PRO1201SFC")
+    return UPS_MODELS.get(model, next(iter(UPS_MODELS.values())))
+
+
+# ══════════════════════════════════════════════════════
+#  CONSTANTS
+# ══════════════════════════════════════════════════════
+VIEWPOWER_BASE  = "http://localhost:15178/ViewPower"
+DASHBOARD_PORT  = 8765
+DASHBOARD_URL   = f"http://localhost:{DASHBOARD_PORT}"
+MAX_READING_GAP = 300   # seconds — gaps > this = PC/app was off, skip for energy calc
+
+# ══════════════════════════════════════════════════════
+#  GLOBAL STATE
+# ══════════════════════════════════════════════════════
+state_lock = threading.Lock()
+ups_state: dict = {
+    "connected":         False,
+    "ups_mode":          "Unknown",
+    "input_voltage":     0.0,
+    "output_voltage":    0.0,
+    "frequency":         0.0,
+    "load_percent":      0,
+    "watts":             0.0,
+    "battery_voltage":   0.0,
+    "battery_capacity":  0,
+    "temperature":       None,
+    "runtime_estimate":  None,   # minutes remaining on battery
+    "on_battery":        False,
+    "last_update":       None,
+}
+
+tray_icon  = None
+_last_on_battery   = False
+_outage_row_id     = None
+_low_bat_notified  = False   # prevent repeated low-battery pings
+_high_load_notified = False
+_shutdown_triggered = False
+_outage_start_time  = None
+
+# ══════════════════════════════════════════════════════
+#  WINDOWS AUTOSTART
+# ══════════════════════════════════════════════════════
+_REG_RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def set_autostart(enabled: bool):
+    try:
+        exe = Path(sys.executable).parent / f"{APP_NAME}.exe"
+        if not exe.exists():
+            exe = Path(sys.executable)
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_RUN, 0, winreg.KEY_SET_VALUE)
+        if enabled:
+            winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, f'"{exe}"')
+        else:
+            try:
+                winreg.DeleteValue(key, APP_NAME)
+            except FileNotFoundError:
+                pass
+        winreg.CloseKey(key)
+    except Exception as e:
+        log.error(f"Autostart error: {e}")
+
+
+def get_autostart() -> bool:
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_RUN, 0, winreg.KEY_READ)
+        winreg.QueryValueEx(key, APP_NAME)
+        winreg.CloseKey(key)
+        return True
+    except Exception:
+        return False
+
+
+# ══════════════════════════════════════════════════════
+#  NOTIFICATIONS  (via pystray & ntfy.sh)
+# ══════════════════════════════════════════════════════
+def notify(title: str, message: str, level: str = "info"):
+    # Desktop Tray
+    if settings.get("notifications_enabled", True):
+        try:
+            if tray_icon:
+                tray_icon.notify(message, title)
+        except Exception as e:
+            log.debug(f"Notification error: {e}")
+            
+    # ntfy.sh Mobile Push Notification
+    topic = settings.get("ntfy_topic", "").strip()
+    if topic:
+        try:
+            # Map levels to ntfy tags and priorities
+            tags_map = {
+                "info": "information_source",
+                "warning": "warning",
+                "danger": "rotating_light",
+                "success": "white_check_mark"
+            }
+            priority_map = {
+                "info": "3",
+                "warning": "4",
+                "danger": "5",
+                "success": "3"
+            }
+            
+            headers = {
+                "Title": title.encode('utf-8'),
+                "Tags": tags_map.get(level, "zap"),
+                "Priority": priority_map.get(level, "3")
+            }
+            
+            requests.post(f"https://ntfy.sh/{topic}", 
+                          data=message.encode('utf-8'), 
+                          headers=headers, 
+                          timeout=5)
+        except Exception as e:
+            log.debug(f"ntfy.sh push error: {e}")
+
+
+# ══════════════════════════════════════════════════════
+#  RUNTIME ESTIMATION
+# ══════════════════════════════════════════════════════
+def estimate_runtime(battery_pct: int, watts: float) -> int | None:
+    """Estimate battery runtime in minutes with Peukert's law approximation."""
+    if watts <= 0 or battery_pct <= 0:
+        return None
+        
+    cfg = get_model_cfg()
+    max_watts = cfg.get("max_watts", 840)
+    
+    # Lead-acid batteries lose significant usable capacity under high load (Peukert's effect).
+    # At 100% load, a UPS battery might only deliver ~25% of its rated Wh before voltage drops too low.
+    load_ratio = min(1.0, watts / max_watts)
+    
+    # Efficiency scales down from 85% at low load to 25% at max load
+    peukert_efficiency = max(0.25, 0.85 - (0.60 * load_ratio))
+    
+    # UPS systems shut down before reaching 0% to prevent battery damage (typically ~15% reserve)
+    usable_pct = max(0, battery_pct - 15) / 100.0
+    
+    available_wh = usable_pct * cfg.get("battery_wh", 196.8) * peukert_efficiency
+    return max(0, int((available_wh / watts) * 60))
+
+
+# ══════════════════════════════════════════════════════
 #  DATABASE
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS readings (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts               TEXT NOT NULL,
-            date             TEXT NOT NULL,
-            input_voltage    REAL,
-            output_voltage   REAL,
-            frequency        REAL,
-            load_percent     INTEGER,
-            watts            REAL,
-            battery_voltage  REAL,
-            battery_capacity INTEGER,
-            ups_mode         TEXT
-        )
-    """)
+    c.execute("""CREATE TABLE IF NOT EXISTS readings (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts               TEXT NOT NULL,
+        date             TEXT NOT NULL,
+        input_voltage    REAL,
+        output_voltage   REAL,
+        frequency        REAL,
+        load_percent     INTEGER,
+        watts            REAL,
+        battery_voltage  REAL,
+        battery_capacity INTEGER,
+        ups_mode         TEXT,
+        temperature      REAL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS outages (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at        TEXT NOT NULL,
+        ended_at          TEXT,
+        duration_seconds  INTEGER,
+        battery_at_start  INTEGER,
+        battery_at_end    INTEGER
+    )""")
+    # Migrations — safe to run every time
+    for col_def in ["temperature REAL"]:
+        try:
+            c.execute(f"ALTER TABLE readings ADD COLUMN {col_def}")
+        except sqlite3.OperationalError:
+            pass
+            
+    # Resolve stale outages (if the PC turned off during an outage)
+    try:
+        c.execute("SELECT id, started_at FROM outages WHERE ended_at IS NULL")
+        stale_outages = c.fetchall()
+        for oid, started_at in stale_outages:
+            # Find the last reading after the outage started to use as the end time
+            c.execute("SELECT ts, battery_capacity FROM readings WHERE ts >= ? ORDER BY ts DESC LIMIT 1", (started_at,))
+            last_reading = c.fetchone()
+            if last_reading:
+                end_ts, bat_end = last_reading
+                duration = int((datetime.fromisoformat(end_ts) - datetime.fromisoformat(started_at)).total_seconds())
+                duration = max(0, duration)
+            else:
+                end_ts = datetime.now().isoformat()
+                bat_end = None
+                duration = int((datetime.now() - datetime.fromisoformat(started_at)).total_seconds())
+            
+            c.execute("""UPDATE outages SET ended_at=?, duration_seconds=?, battery_at_end=?
+                         WHERE id=?""", (end_ts, duration, bat_end, oid))
+    except Exception as e:
+        log.error(f"Resolve stale outages error: {e}")
+        
     conn.commit()
     conn.close()
 
@@ -97,22 +322,17 @@ def save_reading(data: dict):
         now = datetime.now()
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("""
-            INSERT INTO readings
-                (ts, date, input_voltage, output_voltage, frequency,
-                 load_percent, watts, battery_voltage, battery_capacity, ups_mode)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (
-            now.isoformat(),
-            now.strftime("%Y-%m-%d"),
-            data.get("input_voltage"),
-            data.get("output_voltage"),
-            data.get("frequency"),
-            data.get("load_percent"),
-            data.get("watts"),
-            data.get("battery_voltage"),
-            data.get("battery_capacity"),
-            data.get("ups_mode"),
+        c.execute("""INSERT INTO readings
+            (ts, date, input_voltage, output_voltage, frequency,
+             load_percent, watts, battery_voltage, battery_capacity,
+             ups_mode, temperature)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (
+            now.isoformat(), now.strftime("%Y-%m-%d"),
+            data.get("input_voltage"),  data.get("output_voltage"),
+            data.get("frequency"),      data.get("load_percent"),
+            data.get("watts"),          data.get("battery_voltage"),
+            data.get("battery_capacity"), data.get("ups_mode"),
+            data.get("temperature"),
         ))
         conn.commit()
         conn.close()
@@ -120,222 +340,305 @@ def save_reading(data: dict):
         log.error(f"DB save error: {e}")
 
 
-def get_daily_stats(target_date: str = None):
-    """Return kWh and cost for a given date (defaults to today)."""
+def record_outage_start(battery_pct: int) -> int | None:
+    global _outage_row_id
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT INTO outages (started_at, battery_at_start) VALUES (?, ?)",
+                  (datetime.now().isoformat(), battery_pct))
+        _outage_row_id = c.lastrowid
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.error(f"Outage start error: {e}")
+
+
+def record_outage_end(battery_pct: int):
+    global _outage_row_id
+    if _outage_row_id is None:
+        return
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT started_at FROM outages WHERE id=?", (_outage_row_id,))
+        row = c.fetchone()
+        if row:
+            duration = int((datetime.now() - datetime.fromisoformat(row[0])).total_seconds())
+            c.execute("""UPDATE outages SET ended_at=?, duration_seconds=?, battery_at_end=?
+                         WHERE id=?""",
+                      (datetime.now().isoformat(), duration, battery_pct, _outage_row_id))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        log.error(f"Outage end error: {e}")
+    _outage_row_id = None
+
+
+# ── Query helpers ───────────────────────────────────
+def get_daily_stats(target_date: str = None) -> dict:
     if target_date is None:
         target_date = date.today().isoformat()
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("""
-            SELECT watts, ts FROM readings WHERE date=? ORDER BY ts ASC
-        """, (target_date,))
+        c.execute("SELECT watts, ts FROM readings WHERE date=? ORDER BY ts ASC", (target_date,))
         rows = c.fetchall()
         conn.close()
 
         kwh = 0.0
         for i in range(1, len(rows)):
-            w0, t0 = rows[i-1]
-            _, t1  = rows[i]
+            w0, t0 = rows[i - 1]
+            _,  t1 = rows[i]
             dt = (datetime.fromisoformat(t1) - datetime.fromisoformat(t0)).total_seconds()
-            kwh += (w0 / 1000.0) * (dt / 3600.0)
+            if dt <= MAX_READING_GAP:   # skip gaps — PC/app was off
+                kwh += (w0 / 1000.0) * (dt / 3600.0)
 
-        # Add partial interval from last reading to now
-        if rows:
+        # Partial interval from last reading to now (only for today)
+        if rows and target_date == date.today().isoformat():
             last_w, last_t = rows[-1]
             dt = (datetime.now() - datetime.fromisoformat(last_t)).total_seconds()
-            dt = min(dt, POLL_INTERVAL * 2)   # cap at 2 intervals
+            dt = min(dt, settings.get("db_write_interval", 60) * 1.5)
             kwh += (last_w / 1000.0) * (dt / 3600.0)
 
-        return {
-            "date":       target_date,
-            "kwh":        round(kwh, 4),
-            "cost_lkr":   round(kwh * ELEC_RATE_LKR, 2),
-            "samples":    len(rows),
-        }
+        rate = settings.get("elec_rate", 30.0)
+        return {"date": target_date, "kwh": round(kwh, 4),
+                "cost_lkr": round(kwh * rate, 2), "samples": len(rows)}
     except Exception as e:
         log.error(f"Daily stats error: {e}")
-        return {"date": target_date, "kwh": 0, "cost_rs": 0, "samples": 0}
+        return {"date": target_date, "kwh": 0, "cost_lkr": 0, "samples": 0}
 
 
-def get_hourly_data(target_date: str = None):
-    """Return hourly average watts for the given date."""
+def get_monthly_data(month: str = None) -> list:
+    if month is None:
+        month = date.today().strftime("%Y-%m")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT DISTINCT date FROM readings WHERE date LIKE ? ORDER BY date",
+                  (f"{month}%",))
+        dates = [r[0] for r in c.fetchall()]
+        conn.close()
+        return [get_daily_stats(d) for d in dates]
+    except Exception as e:
+        log.error(f"Monthly data error: {e}")
+        return []
+
+
+def get_hourly_data(target_date: str = None) -> list:
     if target_date is None:
         target_date = date.today().isoformat()
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("""
-            SELECT strftime('%H', ts) as hour, AVG(watts)
-            FROM readings WHERE date=?
-            GROUP BY hour ORDER BY hour
-        """, (target_date,))
+        c.execute("""SELECT strftime('%H', ts) as hr,
+                            AVG(watts), MAX(watts), MIN(watts), COUNT(*)
+                     FROM readings WHERE date=? GROUP BY hr ORDER BY hr""",
+                  (target_date,))
         rows = c.fetchall()
         conn.close()
-        return [{"hour": int(r[0]), "avg_watts": round(r[1], 1)} for r in rows]
+        return [{"hour": int(r[0]), "avg_watts": round(r[1], 1),
+                 "max_watts": round(r[2], 1), "min_watts": round(r[3], 1),
+                 "samples": r[4]} for r in rows]
     except Exception as e:
         log.error(f"Hourly data error: {e}")
         return []
 
 
-# ─────────────────────────────────────────────
-#  VIEWPOWER SCRAPER
-# ─────────────────────────────────────────────
+def get_trends(days: int = 30) -> list:
+    try:
+        since = (date.today() - timedelta(days=days)).isoformat()
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""SELECT date,
+                            AVG(battery_voltage), AVG(temperature),
+                            AVG(input_voltage), MIN(input_voltage), MAX(input_voltage),
+                            AVG(battery_capacity)
+                     FROM readings WHERE date >= ?
+                     GROUP BY date ORDER BY date""", (since,))
+        rows = c.fetchall()
+        conn.close()
+        return [{"date": r[0],
+                 "avg_bat_v":   round(r[1], 2) if r[1] is not None else None,
+                 "avg_temp":    round(r[2], 1) if r[2] is not None else None,
+                 "avg_input_v": round(r[3], 1) if r[3] is not None else None,
+                 "min_input_v": round(r[4], 1) if r[4] is not None else None,
+                 "max_input_v": round(r[5], 1) if r[5] is not None else None,
+                 "avg_bat_cap": round(r[6], 1) if r[6] is not None else None,
+                 } for r in rows]
+    except Exception as e:
+        log.error(f"Trends error: {e}")
+        return []
+
+
+def get_outages(limit: int = 50) -> list:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""SELECT id, started_at, ended_at, duration_seconds,
+                            battery_at_start, battery_at_end
+                     FROM outages ORDER BY started_at DESC LIMIT ?""", (limit,))
+        rows = c.fetchall()
+        conn.close()
+        return [{"id": r[0], "started_at": r[1], "ended_at": r[2],
+                 "duration_seconds": r[3], "battery_at_start": r[4],
+                 "battery_at_end": r[5]} for r in rows]
+    except Exception as e:
+        log.error(f"Outages error: {e}")
+        return []
+
+
+def export_csv(start_date: str, end_date: str) -> str:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""SELECT ts, date, input_voltage, output_voltage, frequency,
+                            load_percent, watts, battery_voltage, battery_capacity,
+                            ups_mode, temperature
+                     FROM readings WHERE date BETWEEN ? AND ? ORDER BY ts""",
+                  (start_date, end_date))
+        rows = c.fetchall()
+        conn.close()
+        buf = StringIO()
+        buf.write("timestamp,date,input_voltage,output_voltage,frequency,"
+                  "load_percent,watts,battery_voltage,battery_capacity,"
+                  "ups_mode,temperature\n")
+        for row in rows:
+            buf.write(",".join("" if v is None else str(v) for v in row) + "\n")
+        return buf.getvalue()
+    except Exception as e:
+        log.error(f"CSV export error: {e}")
+        return ""
+
+
+# ══════════════════════════════════════════════════════
+#  VIEWPOWER CLIENT
+# ══════════════════════════════════════════════════════
 class ViewPowerClient:
-    """
-    Communicates with the local ViewPower software.
-    Tries multiple strategies (JSON endpoint → HTML scrape).
-    """
-    HEADERS = {"Accept": "application/json, text/html, */*", "User-Agent": "UPSMonitor/1.0"}
-    TIMEOUT  = 5
+    HEADERS = {"Accept": "application/json, text/html, */*",
+               "User-Agent": "UPSMonitor/1.1"}
+    TIMEOUT = 5
 
     def __init__(self, base_url: str = VIEWPOWER_BASE):
-        self.base_url = base_url.rstrip("/")
-        self.session  = requests.Session()
+        self.base_url   = base_url.rstrip("/")
+        self.session    = requests.Session()
         self.session.headers.update(self.HEADERS)
         self._device_id = None
 
-    # ── public ──────────────────────────────
     def fetch(self) -> dict | None:
-        """Return parsed UPS data dict, or None if ViewPower unreachable."""
-        # Try reqMonitorData POST strategy first
-        data = self._try_req_monitor_data()
-        if data:
-            return data
-
-        # Fallbacks
-        data = self._try_load_info_action()
-        if data:
-            return data
-        data = self._try_device_summary_action()
-        if data:
-            return data
-        data = self._try_html_monitor()
-        return data
+        for strategy in (self._try_req_monitor_data,
+                          self._try_load_info_action,
+                          self._try_device_summary_action,
+                          self._try_html_monitor):
+            data = strategy()
+            if data:
+                return data
+        return None
 
     def _try_req_monitor_data(self) -> dict | None:
-        """Fetch real-time UPS data via the reqMonitorData endpoint using the active portName."""
         try:
-            # 1. Fetch monitor page to get portName
-            monitor_url = f"{self.base_url}/monitor"
-            r = self.session.get(monitor_url, timeout=self.TIMEOUT)
+            r = self.session.get(f"{self.base_url}/monitor", timeout=self.TIMEOUT)
             if r.status_code != 200:
-                log.debug(f"ReqMonitorData: /monitor page returned status {r.status_code}")
                 return None
-            
             html = r.text
-            
-            # Extract portName from Javascript in monitor page
-            import re
-            m = re.search(r'var\s+portName\s*=\s*\"([^\"]+)\";', html)
-            if not m:
-                m = re.search(r'var\s+portName\s*=\s*\'([^\']+)\';', html)
-                
-            if m:
-                port_name = m.group(1)
-                log.debug(f"Parsed portName from monitor page: {port_name}")
-            else:
-                # Fallback to device tree check if not found
-                log.debug("portName not found in /monitor HTML, checking device tree...")
-                port_name = self._resolve_port_name_from_tree()
-                
+            m = re.search(r'var\s+portName\s*=\s*["\']([^"\']+)["\'];', html)
+            port_name = m.group(1) if m else self._resolve_port_name_from_tree()
             if not port_name:
-                port_name = "USB2F7113A9"  # last-resort default
-                
-            # 2. Make POST request to reqMonitorData
-            post_url = f"{self.base_url}/workstatus/reqMonitorData"
-            r_post = self.session.post(post_url, data={"portName": port_name}, timeout=self.TIMEOUT)
-            if r_post.status_code == 200:
-                j = r_post.json()
-                work_info = j.get("workInfo")
-                if work_info:
-                    return self._parse_work_info(work_info)
+                port_name = "USB2F7113A9"
+            r2 = self.session.post(f"{self.base_url}/workstatus/reqMonitorData",
+                                   data={"portName": port_name}, timeout=self.TIMEOUT)
+            if r2.status_code == 200:
+                wi = r2.json().get("workInfo")
+                if wi:
+                    return self._parse_work_info(wi)
         except Exception as e:
-            log.debug(f"reqMonitorData strategy failed: {e}")
+            log.debug(f"reqMonitorData failed: {e}")
         return None
 
     def _resolve_port_name_from_tree(self) -> str | None:
-        """Fetch the device list and construct the portName."""
         try:
-            import json
             import random
-            tree_url = f"{self.base_url}/initDeviceTree?{random.random()}"
-            r = self.session.get(tree_url, timeout=self.TIMEOUT)
+            r = self.session.get(f"{self.base_url}/initDeviceTree?{random.random()}",
+                                 timeout=self.TIMEOUT)
             if r.status_code == 200:
-                tree = r.json()
-                for node in tree:
+                for node in r.json():
                     if node.get("pId") == "11" or "USB" in node.get("name", ""):
-                        name = node.get("name", "")
-                        import re
-                        m_name = re.match(r'([A-Za-z]+)\s*\(id=([A-Za-z0-9]+)_[A-Za-z0-9]+\)', name)
-                        if m_name:
-                            constructed = m_name.group(1) + m_name.group(2)
-                            log.info(f"Resolved portName from device tree: {constructed}")
-                            return constructed
+                        m = re.match(r'([A-Za-z]+)\s*\(id=([A-Za-z0-9]+)_[A-Za-z0-9]+\)',
+                                     node.get("name", ""))
+                        if m:
+                            return m.group(1) + m.group(2)
         except Exception as e:
-            log.debug(f"Failed to resolve portName from tree: {e}")
+            log.debug(f"Port from tree failed: {e}")
         return None
 
-    def _parse_work_info(self, work_info: dict) -> dict | None:
-        """Parse the workInfo dictionary from ViewPower response."""
+    def _parse_work_info(self, wi: dict) -> dict | None:
         try:
-            def to_float(val, default=0.0):
-                if val is None or val == "" or val == "----":
-                    return default
-                try:
-                    return float(val)
-                except ValueError:
-                    return default
+            def f(v, d=0.0):
+                if v in (None, "", "----"): return d
+                try: return float(v)
+                except: return d
 
-            def to_int(val, default=0):
-                if val is None or val == "" or val == "----":
-                    return default
-                try:
-                    return int(val)
-                except ValueError:
-                    return default
+            def i(v, d=0):
+                if v in (None, "", "----"): return d
+                try: return int(float(v))
+                except: return d
+
+            temp_raw = wi.get("temperature") or wi.get("upsTemp") or wi.get("temp")
+            temp = f(temp_raw) if temp_raw else None
 
             return {
-                "input_voltage":    to_float(work_info.get("inputVoltage")),
-                "output_voltage":   to_float(work_info.get("outputVoltage")),
-                "frequency":        to_float(work_info.get("outputFrequency")),
-                "load_percent":     to_int(work_info.get("outputLoadPercent")),
-                "battery_voltage":  to_float(work_info.get("batteryVoltage")),
-                "battery_capacity": to_int(work_info.get("batteryCapacity")),
-                "ups_mode":         work_info.get("workMode", "Line mode"),
+                "input_voltage":    f(wi.get("inputVoltage")),
+                "output_voltage":   f(wi.get("outputVoltage")),
+                "frequency":        f(wi.get("outputFrequency")),
+                "load_percent":     i(wi.get("outputLoadPercent")),
+                "battery_voltage":  f(wi.get("batteryVoltage")),
+                "battery_capacity": i(wi.get("batteryCapacity")),
+                "ups_mode":         wi.get("workMode", "Line mode"),
+                "temperature":      temp,
             }
         except Exception as e:
-            log.debug(f"Failed to parse workInfo: {e}")
+            log.debug(f"parse_work_info failed: {e}")
             return None
 
-    # ── strategy 1: /loadInfo.action ────────
     def _try_load_info_action(self) -> dict | None:
-        device_id = self._device_id or self._get_device_id()
-        if device_id is None:
+        did = self._device_id or self._get_device_id()
+        if not did:
             return None
         try:
-            url = f"{self.base_url}/loadInfo.action"
-            r = self.session.get(url, params={"deviceId": device_id}, timeout=self.TIMEOUT)
+            r = self.session.get(f"{self.base_url}/loadInfo.action",
+                                 params={"deviceId": did}, timeout=self.TIMEOUT)
             if r.status_code == 200:
-                j = r.json()
-                return self._parse_load_info_json(j)
+                return self._parse_load_info_json(r.json())
         except Exception as e:
             log.debug(f"loadInfo.action failed: {e}")
         return None
 
+    def _try_device_summary_action(self) -> dict | None:
+        did = self._device_id or self._get_device_id()
+        if not did:
+            return None
+        try:
+            r = self.session.get(f"{self.base_url}/getDeviceSummary.action",
+                                 params={"deviceId": did}, timeout=self.TIMEOUT)
+            if r.status_code == 200 and r.text.strip().startswith("{"):
+                return self._parse_load_info_json(r.json())
+        except Exception as e:
+            log.debug(f"getDeviceSummary failed: {e}")
+        return None
+
     def _get_device_id(self) -> str | None:
-        for endpoint in ("/deviceList.action", "/getDeviceList.action"):
+        for ep in ("/deviceList.action", "/getDeviceList.action"):
             try:
-                r = self.session.get(self.base_url + endpoint, timeout=self.TIMEOUT)
+                r = self.session.get(self.base_url + ep, timeout=self.TIMEOUT)
                 if r.status_code == 200:
                     j = r.json()
                     devs = j.get("deviceList") or j.get("devices") or []
                     if devs:
-                        self._device_id = str(devs[0].get("deviceId") or devs[0].get("id") or "")
-                        log.info(f"Device ID resolved: {self._device_id}")
+                        self._device_id = str(
+                            devs[0].get("deviceId") or devs[0].get("id") or "")
                         return self._device_id
             except Exception as e:
-                log.debug(f"deviceList {endpoint} failed: {e}")
+                log.debug(f"deviceList {ep} failed: {e}")
         return None
 
     def _parse_load_info_json(self, j: dict) -> dict | None:
@@ -348,67 +651,40 @@ class ViewPowerClient:
                 "battery_voltage":  float(j.get("batteryVoltage", 0) or 0),
                 "battery_capacity": int(j.get("batteryCapacity", 0) or 0),
                 "ups_mode":         j.get("upsMode", "Unknown"),
+                "temperature":      None,
             }
         except Exception:
             return None
 
-    # ── strategy 2: /getDeviceSummary.action ──
-    def _try_device_summary_action(self) -> dict | None:
-        device_id = self._device_id or self._get_device_id()
-        if device_id is None:
-            return None
-        try:
-            url = f"{self.base_url}/getDeviceSummary.action"
-            r = self.session.get(url, params={"deviceId": device_id}, timeout=self.TIMEOUT)
-            if r.status_code == 200 and r.text.strip().startswith("{"):
-                return self._parse_load_info_json(r.json())
-        except Exception as e:
-            log.debug(f"getDeviceSummary failed: {e}")
-        return None
-
-    # ── strategy 3: HTML scrape ──────────────
     def _try_html_monitor(self) -> dict | None:
-        """Scrape the ViewPower web monitor page."""
-        urls_to_try = [
-            f"{self.base_url}/monitor",
-            f"http://localhost:15178/ViewPower/",
-        ]
-        for url in urls_to_try:
+        for url in [f"{self.base_url}/monitor", "http://localhost:15178/ViewPower/"]:
             try:
                 r = self.session.get(url, timeout=self.TIMEOUT)
                 if r.status_code == 200 and "<html" in r.text.lower():
                     data = self._parse_html(r.text)
                     if data:
-                        log.info("Data retrieved via HTML scrape.")
                         return data
             except Exception as e:
                 log.debug(f"HTML scrape {url} failed: {e}")
         return None
 
     def _parse_html(self, html: str) -> dict | None:
-        """Parse ViewPower monitor HTML to extract UPS values."""
         try:
             soup = BeautifulSoup(html, "html.parser")
 
-            def find_val(label_text: str, default=0):
-                """Find a value next to a label in the page."""
-                # Method 1: look for text in td/label/span then sibling
-                for tag in soup.find_all(string=lambda t: t and label_text.lower() in t.lower()):
-                    parent = tag.parent
-                    # Look at next sibling or next element
-                    for sib in [parent.find_next_sibling(), parent.parent.find_next_sibling()]:
-                        if sib:
-                            txt = sib.get_text(strip=True)
-                            num = _extract_number(txt)
-                            if num is not None:
-                                return num
-                # Method 2: look for input/span with class containing value
-                return default
-
-            def _extract_number(txt: str):
-                import re
+            def _num(txt):
                 m = re.search(r"[-+]?\d*\.?\d+", txt)
                 return float(m.group()) if m else None
+
+            def find_val(label):
+                for tag in soup.find_all(string=lambda t: t and label.lower() in t.lower()):
+                    p = tag.parent
+                    for sib in [p.find_next_sibling(), p.parent.find_next_sibling()]:
+                        if sib:
+                            n = _num(sib.get_text(strip=True))
+                            if n is not None:
+                                return n
+                return 0
 
             iv = find_val("Input voltage")
             ov = find_val("Output voltage")
@@ -417,46 +693,138 @@ class ViewPowerClient:
             bv = find_val("Battery voltage")
             bc = find_val("Battery capacity")
 
-            # Try input type=text fields which often hold the values
             inputs = soup.find_all("input", {"type": "text"})
-            values = [_extract_number(i.get("value", "")) for i in inputs if i.get("value")]
+            values = [_num(inp.get("value", "")) for inp in inputs if inp.get("value")]
             values = [v for v in values if v is not None]
-            log.debug(f"HTML input values found: {values}")
-
-            # ViewPower typically shows values in order: inputV, outputV, freq, load, battV, battC
             if len(values) >= 6 and iv == 0:
-                iv, ov, of, ll, bv, bc = values[0], values[1], values[2], values[3], values[4], values[5]
+                iv, ov, of, ll, bv, bc = values[:6]
 
             if iv == 0 and ov == 0:
-                return None   # Couldn't parse anything useful
-
-            return {
-                "input_voltage":    iv,
-                "output_voltage":   ov,
-                "frequency":        of,
-                "load_percent":     int(ll),
-                "battery_voltage":  bv,
-                "battery_capacity": int(bc),
-                "ups_mode":         "Line mode",
-            }
+                return None
+            return {"input_voltage": iv, "output_voltage": ov, "frequency": of,
+                    "load_percent": int(ll), "battery_voltage": bv,
+                    "battery_capacity": int(bc), "ups_mode": "Line mode",
+                    "temperature": None}
         except Exception as e:
             log.debug(f"HTML parse error: {e}")
             return None
 
 
-# ─────────────────────────────────────────────
-#  POLLING THREAD
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+#  POLLING LOOPS
+# ══════════════════════════════════════════════════════
 vp_client = ViewPowerClient()
 
-def polling_loop():
-    log.info("Polling thread started.")
+
+def fast_poll_loop():
+    """Updates in-memory UPS state every ~2 s. Handles outage detection + notifications."""
+    global _last_on_battery, _low_bat_notified, _high_load_notified, _shutdown_triggered, _outage_start_time
+    _high_load_notified = False
+    _shutdown_triggered = False
+    _outage_start_time = None
+    log.info("Fast poll loop started.")
     while True:
         try:
             data = vp_client.fetch()
             with state_lock:
                 if data:
-                    watts = round(MAX_WATTS * (data["load_percent"] / 100.0), 1)
+                    cfg    = get_model_cfg()
+                    watts  = round(cfg["max_watts"] * (data["load_percent"] / 100.0), 1)
+                    on_bat = "battery" in (data.get("ups_mode") or "").lower()
+                    rt     = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
+
+                    # ── Outage detection ──────────────────────
+                    if on_bat and not _last_on_battery:
+                        record_outage_start(data["battery_capacity"])
+                        _low_bat_notified = False
+                        _high_load_notified = False
+                        _outage_start_time = datetime.now()
+                        log.warning(f"POWER OUTAGE — battery {data['battery_capacity']}%")
+                        threading.Thread(
+                            target=notify,
+                            args=("⚡ Power Outage!",
+                                  f"Mains lost. Running on battery "
+                                  f"({data['battery_capacity']}% remaining).",
+                                  "danger"),
+                            daemon=True).start()
+
+                    elif not on_bat and _last_on_battery:
+                        record_outage_end(data["battery_capacity"])
+                        _low_bat_notified = False
+                        _high_load_notified = False
+                        _outage_start_time = None
+                        
+                        # Abort shutdown if one was pending
+                        if _shutdown_triggered:
+                            _shutdown_triggered = False
+                            subprocess.Popen("shutdown /a", shell=True)
+                            threading.Thread(
+                                target=notify,
+                                args=("🛑 Shutdown Aborted", "Power was restored! System shutdown has been cancelled.", "success"),
+                                daemon=True).start()
+                                
+                        log.info(f"Power restored. Battery {data['battery_capacity']}%")
+                        threading.Thread(
+                            target=notify,
+                            args=("✅ Power Restored",
+                                  f"Mains power is back. Battery at {data['battery_capacity']}%.",
+                                  "success"),
+                            daemon=True).start()
+
+                    # ── Auto-Shutdown Safety Net ──────────────
+                    if on_bat and settings.get("auto_shutdown_enabled", False) and not _shutdown_triggered:
+                        trigger_shutdown = False
+                        
+                        # Check Battery Percentage Trigger
+                        if data["battery_capacity"] <= settings.get("auto_shutdown_pct", 10):
+                            trigger_shutdown = True
+                            reason = f"Battery dropped to {data['battery_capacity']}%"
+                            
+                        # Check Outage Duration Trigger
+                        elif settings.get("auto_shutdown_mins", 0) > 0 and _outage_start_time:
+                            outage_mins = (datetime.now() - _outage_start_time).total_seconds() / 60.0
+                            if outage_mins >= settings.get("auto_shutdown_mins", 5):
+                                trigger_shutdown = True
+                                reason = f"Outage lasted {settings.get('auto_shutdown_mins')} minutes"
+                                
+                        if trigger_shutdown:
+                            _shutdown_triggered = True
+                            log.warning(f"AUTO-SHUTDOWN TRIGGERED: {reason}")
+                            threading.Thread(
+                                target=notify,
+                                args=("⚠️ AUTO-SHUTDOWN INITIATED",
+                                      f"{reason}. Windows will shut down in 60 seconds. Save your work immediately!",
+                                      "danger"),
+                                daemon=True).start()
+                            subprocess.Popen(f'shutdown /s /t 60 /c "UPS Auto-Shutdown: {reason}"', shell=True)
+
+                    # ── High Load Warning (during outage) ─────
+                    if on_bat:
+                        if data["load_percent"] > 50 and not _high_load_notified:
+                            _high_load_notified = True
+                            threading.Thread(
+                                target=notify,
+                                args=("⚠️ High Power Usage!",
+                                      f"You are drawing {watts}W on battery. "
+                                      "Close heavy apps (like games) immediately to save battery!",
+                                      "warning"),
+                                daemon=True).start()
+                        elif data["load_percent"] < 40:
+                            _high_load_notified = False
+
+                    # ── Low battery warning (once per outage) ─
+                    if (on_bat and not _low_bat_notified
+                            and data["battery_capacity"] <= settings.get("low_battery_threshold", 20)):
+                        _low_bat_notified = True
+                        threading.Thread(
+                            target=notify,
+                            args=("🪫 Low Battery!",
+                                  f"Battery at {data['battery_capacity']}%. Save your work now!",
+                                  "danger"),
+                            daemon=True).start()
+
+                    _last_on_battery = on_bat
+
                     ups_state.update({
                         "connected":        True,
                         "ups_mode":         data.get("ups_mode", "Unknown"),
@@ -467,198 +835,251 @@ def polling_loop():
                         "watts":            watts,
                         "battery_voltage":  data["battery_voltage"],
                         "battery_capacity": data["battery_capacity"],
+                        "temperature":      data.get("temperature"),
+                        "runtime_estimate": rt,
+                        "on_battery":       on_bat,
                         "last_update":      datetime.now().isoformat(),
                     })
-                    save_reading({**data, "watts": watts})
-                    log.info(f"Poll OK — {watts}W ({data['load_percent']}% load), Bat:{data['battery_capacity']}%")
                 else:
+                    if _last_on_battery:
+                        record_outage_end(ups_state.get("battery_capacity", 0))
+                        _last_on_battery = False
                     ups_state["connected"] = False
-                    log.warning("ViewPower unreachable or data not available.")
         except Exception as e:
-            log.error(f"Polling error: {e}")
+            log.error(f"Fast poll error: {e}")
             with state_lock:
                 ups_state["connected"] = False
 
-        time.sleep(POLL_INTERVAL)
+        time.sleep(max(1, settings.get("fast_poll_interval", 2)))
 
 
-# ─────────────────────────────────────────────
+def db_write_loop():
+    """Saves a reading to DB every 60 s (configurable). Keeps DB lean."""
+    log.info("DB write loop started.")
+    while True:
+        interval = max(30, settings.get("db_write_interval", 60))
+        time.sleep(interval)
+        try:
+            with state_lock:
+                connected = ups_state["connected"]
+                snap = dict(ups_state)
+            if connected:
+                save_reading(snap)
+                log.debug(f"DB write: {snap['watts']}W bat:{snap['battery_capacity']}%")
+        except Exception as e:
+            log.error(f"DB write error: {e}")
+
+
+# ══════════════════════════════════════════════════════
 #  FLASK APP
-# ─────────────────────────────────────────────
-app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder=str(BASE_DIR / "static"))
-app.config["SECRET_KEY"] = "ups-monitor-key-2024"
+# ══════════════════════════════════════════════════════
+flask_app = Flask(
+    __name__,
+    template_folder=str(BASE_DIR / "templates"),
+    static_folder=str(BASE_DIR / "static"),
+)
+flask_app.config["SECRET_KEY"] = "ups-monitor-key-2024"
 
-@app.route("/")
+
+@flask_app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/api/status")
+
+@flask_app.route("/api/status")
 def api_status():
     with state_lock:
         s = dict(ups_state)
     today = get_daily_stats()
+    cfg   = get_model_cfg()
     s.update({
-        "daily_kwh":    today["kwh"],
-        "daily_cost":   today["cost_lkr"],
-        "samples":      today["samples"],
-        "elec_rate":    ELEC_RATE_LKR,
-        "max_watts":    MAX_WATTS,
+        "daily_kwh":  today["kwh"],
+        "daily_cost": today["cost_lkr"],
+        "samples":    today["samples"],
+        "elec_rate":  settings.get("elec_rate", 30.0),
+        "max_watts":  cfg["max_watts"],
+        "ups_model":  settings.get("ups_model", "Prolink PRO1201SFC"),
+        "version":    VERSION,
     })
     return jsonify(s)
 
-@app.route("/api/history")
+
+@flask_app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    global settings
+    if request.method == "POST":
+        body = request.get_json(force=True)
+        settings.update(body)
+        if "autostart" in body:
+            set_autostart(bool(body["autostart"]))
+        settings["autostart"] = get_autostart()
+        save_settings(settings)
+        return jsonify({"ok": True, **settings})
+    settings["autostart"] = get_autostart()
+    return jsonify(settings)
+
+
+@flask_app.route("/api/models")
+def api_models():
+    return jsonify({"models": list(UPS_MODELS.keys()), "specs": UPS_MODELS})
+
+
+@flask_app.route("/api/history")
 def api_history():
     d = request.args.get("date", date.today().isoformat())
     return jsonify(get_hourly_data(d))
 
-@app.route("/api/daily")
+
+@flask_app.route("/api/daily")
 def api_daily():
-    # Return last 7 days of stats
-    results = []
-    for i in range(6, -1, -1):
-        d = (date.today() - timedelta(days=i)).isoformat()
-        results.append(get_daily_stats(d))
-    return jsonify(results)
+    return jsonify([get_daily_stats((date.today() - timedelta(days=i)).isoformat())
+                    for i in range(6, -1, -1)])
 
-@app.route("/api/settings", methods=["POST"])
-def api_settings():
-    global ELEC_RATE_LKR
-    body = request.get_json(force=True)
-    if "elec_rate" in body:
-        ELEC_RATE_LKR = float(body["elec_rate"])
-    return jsonify({"ok": True, "elec_rate": ELEC_RATE_LKR})
 
-VERSION = "v1.0.0"
+@flask_app.route("/api/monthly")
+def api_monthly():
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    return jsonify(get_monthly_data(month))
 
-@app.route("/api/check_update")
+
+@flask_app.route("/api/trends")
+def api_trends():
+    days = int(request.args.get("days", 30))
+    return jsonify(get_trends(days))
+
+
+@flask_app.route("/api/outages")
+def api_outages():
+    return jsonify(get_outages())
+
+
+@flask_app.route("/api/export")
+def api_export():
+    start = request.args.get("start", (date.today() - timedelta(days=30)).isoformat())
+    end   = request.args.get("end",   date.today().isoformat())
+    csv   = export_csv(start, end)
+    return Response(csv, mimetype="text/csv",
+                    headers={"Content-Disposition":
+                             f"attachment; filename=ups_data_{start}_{end}.csv"})
+
+
+@flask_app.route("/api/check_update")
 def check_update():
     try:
-        import requests
-        import re
-        r = requests.get("https://api.github.com/repos/DMStyles/ups-monitor/releases/latest", 
-                         headers={"User-Agent": "UPS-Monitor"}, timeout=5)
+        r = requests.get(
+            "https://api.github.com/repos/DMStyles/ups-monitor/releases/latest",
+            headers={"User-Agent": "UPS-Monitor"}, timeout=5)
         if r.status_code == 200:
-            j = r.json()
-            tag = j.get("tag_name", "v1.0.0")
-            body = j.get("body", "")
-            
-            def parse_ver(v):
-                return [int(x) for x in re.sub(r'[^\d.]', '', v).split('.')]
-                
+            j   = r.json()
+            tag = j.get("tag_name", VERSION)
+
+            def pv(v):
+                return [int(x) for x in re.sub(r"[^\d.]", "", v).split(".")]
+
             try:
-                latest_nums = parse_ver(tag)
-                curr_nums = parse_ver(VERSION)
-                update_available = latest_nums > curr_nums
+                update_available = pv(tag) > pv(VERSION)
             except Exception:
                 update_available = tag != VERSION
-                
+
+            dl_url = next(
+                (a["browser_download_url"] for a in j.get("assets", [])
+                 if a["name"].endswith(".exe")),
+                j.get("zipball_url"))
+
             return jsonify({
                 "update_available": update_available,
-                "latest_version": tag,
-                "current_version": VERSION,
-                "changelog": body,
-                "zipball_url": j.get("zipball_url")
+                "latest_version":   tag,
+                "current_version":  VERSION,
+                "changelog":        j.get("body", ""),
+                "download_url":     dl_url,
             })
     except Exception as e:
-        log.error(f"Error checking update: {e}")
+        log.error(f"Update check error: {e}")
     return jsonify({"update_available": False, "current_version": VERSION})
 
-@app.route("/api/perform_update", methods=["POST"])
+
+@flask_app.route("/api/perform_update", methods=["POST"])
 def perform_update():
     body = request.get_json(force=True)
-    zipball_url = body.get("zipball_url")
-    if not zipball_url:
-        return jsonify({"ok": False, "error": "No zipball URL provided"}), 400
-        
-    t = threading.Thread(target=run_updater, args=(zipball_url,), daemon=True)
-    t.start()
-    return jsonify({"ok": True, "status": "updating"})
+    url  = body.get("download_url") or body.get("zipball_url")
+    if not url:
+        return jsonify({"ok": False, "error": "No URL"}), 400
+    threading.Thread(target=run_updater, args=(url,), daemon=True).start()
+    return jsonify({"ok": True})
 
-def run_updater(zipball_url):
-    import urllib.request
-    import zipfile
-    import shutil
-    import tempfile
-    
-    log.info(f"Starting update process from URL: {zipball_url}")
+
+def run_updater(url: str):
+    import urllib.request, zipfile, shutil, tempfile
+    log.info(f"Update from: {url}")
     try:
-        temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, "update.zip")
-        
-        req = urllib.request.Request(
-            zipball_url, 
-            headers={"User-Agent": "UPS-Monitor-Updater"}
-        )
-        with urllib.request.urlopen(req) as response, open(zip_path, 'wb') as out_file:
-            shutil.copyfileobj(response, out_file)
-            
-        log.info("Update downloaded. Extracting...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
-            
-        extracted_folder = None
-        for name in os.listdir(temp_dir):
-            full_path = os.path.join(temp_dir, name)
-            if os.path.isdir(full_path) and name.startswith("DMStyles-ups-monitor"):
-                extracted_folder = full_path
-                break
-                
-        if not extracted_folder:
-            log.error("Could not find extracted directory starting with DMStyles-ups-monitor")
-            return
-            
-        app_dir = str(BASE_DIR.absolute())
-        update_bat_path = os.path.join(tempfile.gettempdir(), "ups_monitor_update.bat")
-        
-        log.info(f"Writing updater batch file to {update_bat_path}...")
-        with open(update_bat_path, "w") as f:
-            f.write(f"""@echo off
-title UPS Monitor Updater
-echo Waiting for application to close...
-timeout /t 2 /nobreak >nul
-echo Copying new files...
-xcopy /y /e /q "{extracted_folder}\\*" "{app_dir}"
-echo Cleaning up...
-rmdir /s /q "{temp_dir}"
-echo Restarting UPS Power Monitor...
-start "" "{app_dir}\\start_ups_monitor.bat"
-del "%~f0"
-exit
-""")
-        
-        log.info("Launching update.bat detached and exiting.")
-        subprocess.Popen([update_bat_path], shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        tmp = tempfile.mkdtemp()
+        if url.endswith(".exe"):
+            exe_path = os.path.join(tmp, "setup.exe")
+            req = urllib.request.Request(url, headers={"User-Agent": "UPS-Monitor-Updater"})
+            with urllib.request.urlopen(req) as resp, open(exe_path, "wb") as out:
+                shutil.copyfileobj(resp, out)
+            subprocess.Popen([exe_path, "/SILENT"], shell=False)
+        else:
+            zip_path = os.path.join(tmp, "update.zip")
+            req = urllib.request.Request(url, headers={"User-Agent": "UPS-Monitor-Updater"})
+            with urllib.request.urlopen(req) as resp, open(zip_path, "wb") as out:
+                shutil.copyfileobj(resp, out)
+            with zipfile.ZipFile(zip_path) as z:
+                z.extractall(tmp)
+            extracted = next((
+                os.path.join(tmp, n) for n in os.listdir(tmp)
+                if os.path.isdir(os.path.join(tmp, n)) and n.startswith("DMStyles")), None)
+            if not extracted:
+                log.error("Extracted dir not found")
+                return
+            app_dir = str(BASE_DIR.absolute())
+            bat = os.path.join(tempfile.gettempdir(), "ups_update.bat")
+            with open(bat, "w") as f:
+                f.write(f'@echo off\ntimeout /t 2 /nobreak >nul\n'
+                        f'xcopy /y /e /q "{extracted}\\*" "{app_dir}\\"\n'
+                        f'rmdir /s /q "{tmp}"\n'
+                        f'start "" "{app_dir}\\UPS Power Monitor.exe"\n'
+                        f'del "%~f0"\n')
+            subprocess.Popen([bat], shell=True,
+                             creationflags=subprocess.CREATE_NEW_CONSOLE)
         os._exit(0)
-        
     except Exception as e:
-        log.error(f"Failed to perform update: {e}")
+        log.error(f"Update error: {e}")
+
+
+@flask_app.route("/api/show_window")
+def api_show_window():
+    global window
+    if window:
+        try:
+            window.show()
+            window.restore()
+        except Exception as e:
+            log.error(f"Show window error: {e}")
+    return jsonify({"ok": True})
+
 
 def run_flask():
-    log.info(f"Flask server starting on port {DASHBOARD_PORT}")
-    app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False, use_reloader=False)
+    log.info(f"Flask starting on :{DASHBOARD_PORT}")
+    flask_app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False, use_reloader=False)
 
 
-# ─────────────────────────────────────────────
-#  SYSTEM TRAY ICON
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+#  SYSTEM TRAY
+# ══════════════════════════════════════════════════════
 def make_tray_icon(watts: float = 0, connected: bool = False) -> Image.Image:
-    """Draw a 64×64 tray icon showing connection status + watts."""
     size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    img  = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-
-    # Background circle
-    bg_color = (30, 200, 100) if connected else (200, 80, 80)
-    draw.ellipse([2, 2, size-2, size-2], fill=bg_color)
-
-    # Lightning bolt symbol ⚡ (simplified polygon)
-    bolt = [(32, 4), (18, 34), (30, 34), (24, 60), (46, 26), (34, 26)]
-    draw.polygon(bolt, fill=(255, 255, 255))
-
+    draw.ellipse([2, 2, size - 2, size - 2],
+                 fill=(30, 200, 100) if connected else (200, 80, 80))
+    draw.polygon([(32, 4), (18, 34), (30, 34), (24, 60), (46, 26), (34, 26)],
+                 fill=(255, 255, 255))
     return img
 
 
 window = None
+
 
 def on_closing():
     global window
@@ -670,88 +1091,97 @@ def on_closing():
 
 
 def create_tray():
+    global tray_icon
+
     def open_dashboard(icon, item):
         global window
         try:
             window.show()
             window.restore()
         except Exception as e:
-            log.error(f"Failed to open dashboard window: {e}")
+            log.error(f"Open dashboard error: {e}")
 
     def quit_app(icon, item):
-        log.info("Quit requested from tray.")
         icon.stop()
         os._exit(0)
 
-    icon_image = make_tray_icon(connected=False)
-    menu = pystray.Menu(
-        pystray.MenuItem("📊 Open Dashboard", open_dashboard, default=True),
-        pystray.Menu.SEPARATOR,
-        pystray.MenuItem("❌ Quit", quit_app),
+    icon = pystray.Icon(
+        "UPS Monitor",
+        make_tray_icon(connected=False),
+        "UPS Monitor",
+        pystray.Menu(
+            pystray.MenuItem("📊 Open Dashboard", open_dashboard, default=True),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("❌ Quit", quit_app),
+        ),
     )
-    icon = pystray.Icon("UPS Monitor", icon_image, "UPS Monitor — Loading…", menu)
+    tray_icon = icon
 
-    def update_tray():
-        """Periodically update tray icon title."""
+    def update_loop():
         while True:
             with state_lock:
-                w = ups_state["watts"]
-                con = ups_state["connected"]
-                bat = ups_state["battery_capacity"]
+                w, con = ups_state["watts"], ups_state["connected"]
+                bat, on_bat = ups_state["battery_capacity"], ups_state["on_battery"]
+                rt = ups_state["runtime_estimate"]
             icon.icon = make_tray_icon(w, con)
             if con:
-                icon.title = f"⚡ UPS Monitor — {w:.0f}W  |  Bat: {bat}%"
+                status = f"🔋 Battery (~{rt} min left)" if on_bat and rt else "✅ Line"
+                icon.title = f"⚡ UPS — {w:.0f} W  |  {status}  |  Bat:{bat}%"
             else:
                 icon.title = "⚡ UPS Monitor — Waiting for ViewPower…"
-            time.sleep(10)
+            time.sleep(5)
 
-    threading.Thread(target=update_tray, daemon=True).start()
+    threading.Thread(target=update_loop, daemon=True).start()
     icon.run()
 
 
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+#  SINGLE INSTANCE LOCK
+# ══════════════════════════════════════════════════════
+def check_single_instance():
+    import ctypes
+    ERROR_ALREADY_EXISTS = 183
+    mutex_name = "UPS_Power_Monitor_Mutex_v1"
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        log.warning("Another instance is running. Waking it up and exiting.")
+        try:
+            requests.get(f"http://localhost:{DASHBOARD_PORT}/api/show_window", timeout=1)
+        except Exception:
+            pass
+        os._exit(0)
+    return mutex
+
+
+# ══════════════════════════════════════════════════════
 #  ENTRY POINT
-# ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+_app_mutex = None
+
 def main():
+    global _app_mutex
+    _app_mutex = check_single_instance()
+    
     log.info("=" * 60)
-    log.info("UPS Power Monitor starting…")
+    log.info(f"UPS Power Monitor {VERSION} starting…")
     init_db()
 
-    # Start polling thread
-    t_poll = threading.Thread(target=polling_loop, daemon=True)
-    t_poll.start()
-
-    # Start Flask in background thread
-    t_flask = threading.Thread(target=run_flask, daemon=True)
-    t_flask.start()
-
-    # Give Flask a moment to start
+    threading.Thread(target=fast_poll_loop, daemon=True).start()
+    threading.Thread(target=db_write_loop,  daemon=True).start()
+    threading.Thread(target=run_flask,       daemon=True).start()
     time.sleep(2)
+    threading.Thread(target=create_tray,     daemon=True).start()
 
-    # Start system tray on background thread
-    log.info("Starting system tray on background thread…")
-    threading.Thread(target=create_tray, daemon=True).start()
-
-    # Create and run native pywebview window on main thread (required)
-    log.info("Starting native pywebview window…")
-    global window
-    is_minimized = "--minimized" in sys.argv
-    
-    # Import webview dynamically inside main
     import webview
-    
+    global window
     window = webview.create_window(
         title="UPS Power Monitor",
         url=DASHBOARD_URL,
-        width=1100,
-        height=780,
-        resizable=True,
-        min_size=(900, 600),
-        hidden=is_minimized
+        width=1200, height=840,
+        resizable=True, min_size=(960, 640),
+        hidden="--minimized" in sys.argv,
     )
     window.events.closing += on_closing
-    
-    # Run the native webview event loop (blocks main thread until destroyed)
     webview.start()
 
 

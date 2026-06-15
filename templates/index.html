@@ -4,37 +4,36 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>UPS Power Monitor — Prolink 1.2kVA</title>
-  <meta name="description" content="Real-time UPS power monitoring dashboard for Prolink 1.2kVA connected via ViewPower" />
+  <meta name="description" content="Real-time UPS power monitoring dashboard for Prolink 1.2kVA" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <!-- Animated background -->
   <div class="bg-glow bg-glow-1"></div>
   <div class="bg-glow bg-glow-2"></div>
   <div class="bg-glow bg-glow-3"></div>
 
   <div class="app-wrapper">
 
-    <!-- Update notification banner -->
-    <div id="update-banner" class="update-banner" style="display: none;">
+    <!-- Update banner -->
+    <div id="update-banner" class="update-banner" style="display:none;">
       <div class="update-banner-content">
         <span class="update-icon">🚀</span>
-        <span class="update-message">A new update <strong id="update-version">v1.0.0</strong> is available!</span>
+        <span class="update-message">New update <strong id="update-version">v1.0.0</strong> is available!</span>
         <button class="update-btn" id="update-action-btn" onclick="performUpdate()">Update Now</button>
       </div>
       <button class="update-close-btn" onclick="closeUpdateBanner()">✕</button>
     </div>
 
-    <!-- ── HEADER ──────────────────────────── -->
+    <!-- ── HEADER ── -->
     <header class="header">
       <div class="header-left">
         <div class="logo-icon">⚡</div>
         <div>
           <h1 class="header-title">UPS Power Monitor</h1>
-          <p class="header-sub">Prolink 1.2kVA &nbsp;•&nbsp; 720W Max Output</p>
+          <p class="header-sub" id="header-sub">Prolink 1.2kVA &nbsp;•&nbsp; 840W Max Output</p>
         </div>
       </div>
       <div class="header-right">
@@ -46,163 +45,497 @@
       </div>
     </header>
 
-    <!-- ── MAIN GRID ─────────────────────── -->
-    <main class="main-grid">
+    <!-- ── TAB NAV ── -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" id="tab-btn-dashboard" onclick="switchTab('dashboard')">
+        <span class="tab-icon">📊</span> Dashboard
+      </button>
+      <button class="tab-btn" id="tab-btn-analytics" onclick="switchTab('analytics')">
+        <span class="tab-icon">📈</span> Analytics
+      </button>
+      <button class="tab-btn" id="tab-btn-settings" onclick="switchTab('settings')">
+        <span class="tab-icon">⚙️</span> Settings
+      </button>
+    </nav>
 
-      <!-- ── POWER GAUGE ── -->
-      <section class="card gauge-card" id="gauge-section">
-        <div class="gauge-container">
-          <svg class="gauge-svg" viewBox="0 0 220 160">
-            <!-- Background arc -->
-            <path id="gauge-bg-arc"    class="gauge-arc-bg"     d="" />
-            <!-- Colored value arc -->
-            <path id="gauge-fill-arc"  class="gauge-arc-fill"   d="" />
-            <!-- Center display -->
-          </svg>
-          <div class="gauge-center">
-            <div class="gauge-watts" id="gauge-watts">0</div>
-            <div class="gauge-unit">Watts</div>
-            <div class="gauge-max">of 720 W max</div>
-          </div>
-        </div>
-        <div class="load-bar-wrap">
-          <div class="load-bar-label">
-            <span>Load Level</span>
-            <span id="load-pct-text">0%</span>
-          </div>
-          <div class="load-bar-track">
-            <div class="load-bar-fill" id="load-bar"></div>
-          </div>
-        </div>
-      </section>
+    <!-- ══════════════════════════════════════════════ -->
+    <!--  TAB: DASHBOARD                               -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div id="tab-dashboard" class="tab-panel active">
+      <main class="main-grid">
 
-      <!-- ── TODAY SUMMARY ── -->
-      <section class="card today-card">
-        <h2 class="card-title">Today's Energy</h2>
-        <div class="today-grid">
-          <div class="today-stat">
-            <div class="today-icon">⚡</div>
-            <div class="today-val" id="today-kwh">0.000</div>
-            <div class="today-label">kWh used</div>
-          </div>
-          <div class="today-divider"></div>
-          <div class="today-stat">
-            <div class="today-icon">💰</div>
-            <div class="today-val" id="today-cost">LKR 0.00</div>
-            <div class="today-label">Est. cost</div>
-          </div>
-          <div class="today-divider"></div>
-          <div class="today-stat">
-            <div class="today-icon">📊</div>
-            <div class="today-val" id="today-samples">0</div>
-            <div class="today-label">Readings</div>
-          </div>
-        </div>
-        <div class="rate-row">
-          <span class="rate-label">Electricity rate:</span>
-          <div class="rate-input-wrap">
-            <span class="rate-prefix">LKR</span>
-            <input type="number" id="rate-input" class="rate-input" value="30.00" step="1" min="0" />
-            <span class="rate-suffix">/kWh</span>
-          </div>
-          <button class="rate-btn" id="rate-save-btn" onclick="saveRate()">Save</button>
-        </div>
-      </section>
-
-      <!-- ── UPS VITALS ── -->
-      <section class="card vitals-card">
-        <h2 class="card-title">UPS Vitals</h2>
-        <div class="vitals-grid">
-
-          <div class="vital-item">
-            <div class="vital-icon input-color">🔌</div>
-            <div class="vital-info">
-              <div class="vital-label">Input Voltage</div>
-              <div class="vital-val mono" id="v-input">—</div>
+        <!-- POWER GAUGE -->
+        <section class="card gauge-card" id="gauge-section">
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 220 160">
+              <path id="gauge-bg-arc"   class="gauge-arc-bg"   d="" />
+              <path id="gauge-fill-arc" class="gauge-arc-fill" d="" />
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-watts" id="gauge-watts">0</div>
+              <div class="gauge-unit">Watts</div>
+              <div class="gauge-max" id="gauge-max-label">of 840 W max</div>
             </div>
           </div>
-
-          <div class="vital-item">
-            <div class="vital-icon output-color">💡</div>
-            <div class="vital-info">
-              <div class="vital-label">Output Voltage</div>
-              <div class="vital-val mono" id="v-output">—</div>
+          <div class="load-bar-wrap">
+            <div class="load-bar-label">
+              <span>Load Level</span>
+              <span id="load-pct-text">0%</span>
+            </div>
+            <div class="load-bar-track">
+              <div class="load-bar-fill" id="load-bar"></div>
             </div>
           </div>
+          <!-- Runtime estimate (only shown on battery) -->
+          <div id="runtime-badge" class="runtime-badge" style="display:none;">
+            <span class="runtime-icon">🔋</span>
+            <span>Est. <strong id="runtime-val">—</strong> min remaining</span>
+          </div>
+        </section>
 
-          <div class="vital-item">
-            <div class="vital-icon freq-color">〰️</div>
-            <div class="vital-info">
-              <div class="vital-label">Frequency</div>
-              <div class="vital-val mono" id="v-freq">—</div>
+        <!-- TODAY SUMMARY -->
+        <section class="card today-card">
+          <h2 class="card-title">Today's Energy</h2>
+          <div class="today-grid">
+            <div class="today-stat">
+              <div class="today-icon">⚡</div>
+              <div class="today-val" id="today-kwh">0.000</div>
+              <div class="today-label">kWh used</div>
+            </div>
+            <div class="today-divider"></div>
+            <div class="today-stat">
+              <div class="today-icon">💰</div>
+              <div class="today-val" id="today-cost">LKR 0.00</div>
+              <div class="today-label">Est. cost</div>
+            </div>
+            <div class="today-divider"></div>
+            <div class="today-stat">
+              <div class="today-icon">📊</div>
+              <div class="today-val" id="today-samples">0</div>
+              <div class="today-label">Readings</div>
             </div>
           </div>
-
-          <div class="vital-item">
-            <div class="vital-icon mode-color">🔋</div>
-            <div class="vital-info">
-              <div class="vital-label">UPS Mode</div>
-              <div class="vital-val" id="v-mode">—</div>
-            </div>
+          <!-- On-battery alert -->
+          <div id="battery-alert" class="battery-alert" style="display:none;">
+            <span>🔋</span>
+            <span id="battery-alert-msg">Running on battery power</span>
           </div>
+        </section>
 
-          <div class="vital-item">
-            <div class="vital-icon bat-color">🔋</div>
-            <div class="vital-info">
-              <div class="vital-label">Battery Voltage</div>
-              <div class="vital-val mono" id="v-batvolt">—</div>
+        <!-- UPS VITALS -->
+        <section class="card vitals-card">
+          <h2 class="card-title">UPS Vitals</h2>
+          <div class="vitals-grid">
+            <div class="vital-item">
+              <div class="vital-icon input-color">🔌</div>
+              <div class="vital-info">
+                <div class="vital-label">Input Voltage</div>
+                <div class="vital-val mono" id="v-input">—</div>
+              </div>
             </div>
-          </div>
-
-          <div class="vital-item battery-full">
-            <div class="vital-icon bat-color">🪫</div>
-            <div class="vital-info">
-              <div class="vital-label">Battery Capacity</div>
-              <div class="vital-val mono" id="v-batcap">—</div>
-              <div class="bat-bar-track">
-                <div class="bat-bar-fill" id="bat-bar"></div>
+            <div class="vital-item">
+              <div class="vital-icon output-color">💡</div>
+              <div class="vital-info">
+                <div class="vital-label">Output Voltage</div>
+                <div class="vital-val mono" id="v-output">—</div>
+              </div>
+            </div>
+            <div class="vital-item">
+              <div class="vital-icon freq-color">〰️</div>
+              <div class="vital-info">
+                <div class="vital-label">Frequency</div>
+                <div class="vital-val mono" id="v-freq">—</div>
+              </div>
+            </div>
+            <div class="vital-item">
+              <div class="vital-icon mode-color">🔋</div>
+              <div class="vital-info">
+                <div class="vital-label">UPS Mode</div>
+                <div class="vital-val" id="v-mode">—</div>
+              </div>
+            </div>
+            <div class="vital-item">
+              <div class="vital-icon bat-color">🔋</div>
+              <div class="vital-info">
+                <div class="vital-label">Battery Voltage</div>
+                <div class="vital-val mono" id="v-batvolt">—</div>
+              </div>
+            </div>
+            <div class="vital-item" id="v-temp-item" style="display:none;">
+              <div class="vital-icon" style="color:#ff9800;">🌡️</div>
+              <div class="vital-info">
+                <div class="vital-label">Temperature</div>
+                <div class="vital-val mono" id="v-temp">—</div>
+              </div>
+            </div>
+            <div class="vital-item battery-full">
+              <div class="vital-icon bat-color">🪫</div>
+              <div class="vital-info">
+                <div class="vital-label">Battery Capacity</div>
+                <div class="vital-val mono" id="v-batcap">—</div>
+                <div class="bat-bar-track">
+                  <div class="bat-bar-fill" id="bat-bar"></div>
+                </div>
               </div>
             </div>
           </div>
+        </section>
 
-        </div>
-      </section>
+        <!-- HOURLY CHART -->
+        <section class="card chart-card">
+          <div class="chart-header">
+            <h2 class="card-title">Today's Power Usage</h2>
+            <div class="chart-legend">
+              <span class="legend-dot"></span>
+              <span>Avg Watts per hour</span>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="hourlyChart"></canvas>
+          </div>
+        </section>
 
-      <!-- ── HOURLY CHART ── -->
-      <section class="card chart-card">
-        <div class="chart-header">
-          <h2 class="card-title">Today's Power Usage</h2>
-          <div class="chart-legend">
-            <span class="legend-dot"></span>
-            <span>Avg Watts per hour</span>
+        <!-- 7-DAY CHART -->
+        <section class="card week-card">
+          <div class="chart-header">
+            <h2 class="card-title">7-Day Energy History</h2>
+            <div class="chart-legend">
+              <span class="legend-dot legend-dot-green"></span>
+              <span>kWh per day</span>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="weekChart"></canvas>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="footer">
+        UPS Power Monitor &nbsp;•&nbsp; ViewPower at <code>localhost:15178</code>
+        &nbsp;•&nbsp; Live data refreshes every <span id="live-interval">2</span>s
+        &nbsp;•&nbsp; <span id="app-version-footer">v1.1.0</span>
+      </footer>
+    </div><!-- /tab-dashboard -->
+
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!--  TAB: ANALYTICS                               -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div id="tab-analytics" class="tab-panel">
+
+      <!-- Monthly Overview -->
+      <section class="card analytics-section">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">Monthly Power Usage</h2>
+          <div class="month-controls">
+            <button class="month-nav-btn" onclick="changeMonth(-1)" id="month-prev">&#8249;</button>
+            <span class="month-label" id="month-label">—</span>
+            <button class="month-nav-btn" onclick="changeMonth(1)" id="month-next">&#8250;</button>
           </div>
         </div>
-        <div class="chart-wrapper">
-          <canvas id="hourlyChart"></canvas>
-        </div>
-      </section>
 
-      <!-- ── 7-DAY CHART ── -->
-      <section class="card week-card">
-        <div class="chart-header">
-          <h2 class="card-title">7-Day Energy History</h2>
-          <div class="chart-legend">
-            <span class="legend-dot legend-dot-green"></span>
-            <span>kWh per day</span>
+        <!-- Monthly summary stats -->
+        <div class="monthly-stats-row" id="monthly-stats">
+          <div class="m-stat">
+            <div class="m-stat-val" id="m-total-kwh">—</div>
+            <div class="m-stat-label">Total kWh</div>
+          </div>
+          <div class="m-stat-div"></div>
+          <div class="m-stat">
+            <div class="m-stat-val" id="m-total-cost">—</div>
+            <div class="m-stat-label">Est. Cost (LKR)</div>
+          </div>
+          <div class="m-stat-div"></div>
+          <div class="m-stat">
+            <div class="m-stat-val" id="m-avg-daily">—</div>
+            <div class="m-stat-label">Avg kWh/day</div>
+          </div>
+          <div class="m-stat-div"></div>
+          <div class="m-stat">
+            <div class="m-stat-val" id="m-days">—</div>
+            <div class="m-stat-label">Days recorded</div>
           </div>
         </div>
-        <div class="chart-wrapper">
-          <canvas id="weekChart"></canvas>
+
+        <div class="chart-wrapper" style="height:240px;">
+          <canvas id="monthlyChart"></canvas>
+        </div>
+        <p class="chart-hint">Click a bar to see hourly breakdown for that day</p>
+      </section>
+
+      <!-- Daily Detail Drill-Down -->
+      <section class="card analytics-section" id="daily-detail-card" style="display:none;">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">Hourly Breakdown — <span id="detail-date">—</span></h2>
+          <button class="close-detail-btn" onclick="closeDailyDetail()">✕ Close</button>
+        </div>
+        <div class="detail-stats-row">
+          <div class="m-stat">
+            <div class="m-stat-val" id="d-kwh">—</div>
+            <div class="m-stat-label">Total kWh</div>
+          </div>
+          <div class="m-stat-div"></div>
+          <div class="m-stat">
+            <div class="m-stat-val" id="d-peak">—</div>
+            <div class="m-stat-label">Peak Watts</div>
+          </div>
+          <div class="m-stat-div"></div>
+          <div class="m-stat">
+            <div class="m-stat-val" id="d-avg">—</div>
+            <div class="m-stat-label">Avg Watts</div>
+          </div>
+          <div class="m-stat-div"></div>
+          <div class="m-stat">
+            <div class="m-stat-val" id="d-readings">—</div>
+            <div class="m-stat-label">Readings</div>
+          </div>
+        </div>
+        <div class="chart-wrapper" style="height:200px;">
+          <canvas id="detailChart"></canvas>
         </div>
       </section>
 
-    </main>
+      <!-- UPS Health Trends (2 side by side) -->
+      <div class="trends-grid">
+        <section class="card analytics-section">
+          <div class="analytics-header">
+            <h2 class="card-title" style="margin-bottom:0;">Battery Voltage Trend</h2>
+            <span class="trend-days-label">30 days</span>
+          </div>
+          <div class="chart-wrapper" style="height:180px;">
+            <canvas id="batVoltChart"></canvas>
+          </div>
+        </section>
 
-    <footer class="footer">
-      UPS Power Monitor &nbsp;•&nbsp; ViewPower connected at <code>localhost:15178</code> &nbsp;•&nbsp;
-      Data refreshes every <span id="countdown">5</span>s
-    </footer>
-  </div>
+        <section class="card analytics-section">
+          <div class="analytics-header">
+            <h2 class="card-title" style="margin-bottom:0;">Input Voltage Stability</h2>
+            <span class="trend-days-label">30 days</span>
+          </div>
+          <div class="chart-wrapper" style="height:180px;">
+            <canvas id="inputVoltChart"></canvas>
+          </div>
+        </section>
+      </div>
+
+      <!-- Power Outage Log -->
+      <section class="card analytics-section">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">⚡ Power Outage Log</h2>
+          <span class="outage-count-badge" id="outage-count">0 outages</span>
+        </div>
+        <div class="outage-table-wrap">
+          <table class="outage-table" id="outage-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Started</th>
+                <th>Ended</th>
+                <th>Duration</th>
+                <th>Battery Start</th>
+                <th>Battery End</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="outage-tbody">
+              <tr><td colspan="7" class="no-data">No outages recorded yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Export section -->
+      <section class="card analytics-section">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">📥 Export Data</h2>
+        </div>
+        <div class="export-row">
+          <label class="export-label">From</label>
+          <input type="date" id="export-start" class="export-date-input" />
+          <label class="export-label">To</label>
+          <input type="date" id="export-end" class="export-date-input" />
+          <button class="export-btn" onclick="exportCSV()">Download CSV</button>
+        </div>
+        <p style="font-size:0.78rem; color:var(--text-dim); margin-top:8px;">
+          Exports all readings (voltage, watts, battery, mode) for the selected date range.
+        </p>
+      </section>
+
+    </div><!-- /tab-analytics -->
+
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!--  TAB: SETTINGS                               -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div id="tab-settings" class="tab-panel">
+      <div class="settings-grid">
+
+        <!-- App Info -->
+        <section class="card settings-card">
+          <h2 class="card-title">About</h2>
+          <div class="app-info-row">
+            <div class="app-info-logo">⚡</div>
+            <div>
+              <div class="app-info-name">UPS Power Monitor</div>
+              <div class="app-info-ver" id="s-version">v1.1.0</div>
+              <a href="https://github.com/DMStyles/ups-monitor" target="_blank" class="gh-link">
+                View on GitHub →
+              </a>
+            </div>
+          </div>
+          <div class="setting-group" style="margin-top:16px;">
+            <button class="settings-btn settings-btn-primary" id="check-update-btn" onclick="manualCheckUpdate()">
+              🔍 Check for Updates
+            </button>
+            <div id="update-status-msg" class="update-status-msg"></div>
+          </div>
+        </section>
+
+        <!-- UPS Model -->
+        <section class="card settings-card">
+          <h2 class="card-title">UPS Model</h2>
+          <div class="setting-group">
+            <label class="setting-label">Select your UPS model</label>
+            <select class="setting-select" id="s-model" onchange="onModelChange()">
+              <option value="Prolink PRO1201SFC">Prolink PRO1201SFC</option>
+            </select>
+          </div>
+          <!-- Model specs display -->
+          <div class="model-specs-grid" id="model-specs">
+            <div class="model-spec-item"><span class="spec-label">Capacity</span><span class="spec-val" id="ms-va">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Max Watts</span><span class="spec-val" id="ms-watts">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Power Factor</span><span class="spec-val" id="ms-pf">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Battery</span><span class="spec-val" id="ms-bat">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Input Range</span><span class="spec-val" id="ms-input">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Waveform</span><span class="spec-val" id="ms-wave">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Transfer Time</span><span class="spec-val" id="ms-transfer">—</span></div>
+            <div class="model-spec-item"><span class="spec-label">Recharge</span><span class="spec-val" id="ms-recharge">—</span></div>
+          </div>
+        </section>
+
+        <!-- Power & Cost -->
+        <section class="card settings-card">
+          <h2 class="card-title">Power & Cost</h2>
+          <div class="setting-group">
+            <label class="setting-label" for="s-rate">Electricity Rate (LKR / kWh)</label>
+            <div class="setting-input-row">
+              <input type="number" id="s-rate" class="setting-input" step="1" min="0" placeholder="30.00" />
+            </div>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" for="s-low-bat">Low Battery Alert Threshold (%)</label>
+            <div class="setting-input-row">
+              <input type="number" id="s-low-bat" class="setting-input" step="1" min="5" max="50" placeholder="20" />
+            </div>
+          </div>
+        </section>
+
+        <!-- Auto-Shutdown -->
+        <section class="card settings-card">
+          <h2 class="card-title" style="color:var(--danger)">Auto-Shutdown Safety</h2>
+          <div class="setting-group">
+            <div class="setting-toggle-row">
+              <div>
+                <div class="setting-label">Enable Auto-Shutdown</div>
+                <div class="setting-hint">Automatically turn off PC to prevent data loss.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="s-auto-shutdown" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-group" style="margin-top:10px;">
+            <label class="setting-label" for="s-shutdown-pct">Shutdown if Battery drops below (%)</label>
+            <div class="setting-input-row">
+              <input type="number" id="s-shutdown-pct" class="setting-input" step="1" min="5" max="99" placeholder="10" />
+            </div>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" for="s-shutdown-mins">Or Shutdown if Outage lasts (minutes)</label>
+            <div class="setting-input-row">
+              <input type="number" id="s-shutdown-mins" class="setting-input" step="1" min="0" placeholder="5" />
+            </div>
+            <p class="setting-hint">Set to 0 to disable time-based shutdown.</p>
+          </div>
+        </section>
+
+        <!-- Polling -->
+        <section class="card settings-card">
+          <h2 class="card-title">Data Polling</h2>
+          <div class="setting-group">
+            <label class="setting-label" for="s-fast-poll">Live Refresh Interval (seconds)</label>
+            <input type="range" id="s-fast-poll" class="setting-range" min="1" max="10" step="1" />
+            <div class="range-val-row">
+              <span class="range-min">1s</span>
+              <span class="range-current" id="s-fast-poll-val">2s</span>
+              <span class="range-max">10s</span>
+            </div>
+            <p class="setting-hint">How often the live display fetches from ViewPower.</p>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" for="s-db-write">Database Write Interval (seconds)</label>
+            <input type="range" id="s-db-write" class="setting-range" min="30" max="300" step="30" />
+            <div class="range-val-row">
+              <span class="range-min">30s</span>
+              <span class="range-current" id="s-db-write-val">60s</span>
+              <span class="range-max">300s</span>
+            </div>
+            <p class="setting-hint">How often readings are saved to the energy database.</p>
+          </div>
+        </section>
+
+        <!-- Notifications & System -->
+        <section class="card settings-card">
+          <h2 class="card-title">Notifications & System</h2>
+          <div class="setting-group">
+            <div class="setting-toggle-row">
+              <div>
+                <div class="setting-label">Tray Notifications</div>
+                <div class="setting-hint">Alert on power outage, restore, and low battery.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="s-notifications" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="setting-group" style="margin-top:10px;">
+            <label class="setting-label" for="s-ntfy">Mobile Alerts Topic (ntfy.sh)</label>
+            <div class="setting-input-row">
+              <input type="text" id="s-ntfy" class="setting-input" placeholder="e.g. my_ups_alerts_123" />
+            </div>
+            <p class="setting-hint">Download the free <strong>ntfy</strong> app on your phone, subscribe to this topic, and receive instant push notifications for power events!</p>
+          </div>
+          
+          <div class="setting-group" style="margin-top:10px;">
+            <div class="setting-toggle-row">
+              <div>
+                <div class="setting-label">Start with Windows</div>
+                <div class="setting-hint">Launch UPS Monitor automatically at login.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="s-autostart" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- Save button -->
+        <div class="settings-save-row">
+          <button class="settings-btn settings-btn-primary settings-btn-save" onclick="saveSettings()" id="save-settings-btn">
+            💾 Save Settings
+          </button>
+          <span class="save-status" id="save-status"></span>
+        </div>
+
+      </div><!-- /settings-grid -->
+    </div><!-- /tab-settings -->
+
+  </div><!-- /app-wrapper -->
 
   <script src="/static/app.js"></script>
 </body>

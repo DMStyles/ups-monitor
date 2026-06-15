@@ -29,7 +29,7 @@ a = Analysis(
         # Networking
         "requests",
         "bs4",
-        "beautifulsoup4",
+        "bs4",
         # Image
         "PIL",
         "PIL.Image",
