@@ -214,7 +214,7 @@
       <footer class="footer">
         UPS Power Monitor &nbsp;•&nbsp; ViewPower at <code>localhost:15178</code>
         &nbsp;•&nbsp; Live data refreshes every <span id="live-interval">2</span>s
-        &nbsp;•&nbsp; <span id="app-version-footer">v1.1.0</span>
+        &nbsp;•&nbsp; <span id="app-version-footer">v1.3.0</span>
       </footer>
     </div><!-- /tab-dashboard -->
 
@@ -362,6 +362,70 @@
         </p>
       </section>
 
+      <!-- CEB Bill Estimator -->
+      <section class="card analytics-section" id="bill-estimator-section">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">🧾 CEB Bill Estimator</h2>
+          <div class="month-controls">
+            <button class="month-nav-btn" onclick="changeBillMonth(-1)">&#8249;</button>
+            <span class="month-label" id="bill-month-label">—</span>
+            <button class="month-nav-btn" onclick="changeBillMonth(1)">&#8250;</button>
+          </div>
+        </div>
+        <p style="font-size:0.78rem; color:var(--text-dim); margin-top:4px; margin-bottom:16px;">
+          Estimated CEB Domestic tariff bill based on your recorded energy usage. Partial months are projected to a full 30-day billing cycle.
+        </p>
+
+        <!-- Top summary cards -->
+        <div class="bill-summary-row" id="bill-summary-row">
+          <div class="bill-summary-card bill-card-blue">
+            <div class="bill-card-icon">⚡</div>
+            <div class="bill-card-body">
+              <div class="bill-card-val" id="bill-proj-kwh">—</div>
+              <div class="bill-card-label">Projected Units (kWh)</div>
+            </div>
+          </div>
+          <div class="bill-summary-card bill-card-green">
+            <div class="bill-card-icon">📅</div>
+            <div class="bill-card-body">
+              <div class="bill-card-val" id="bill-daily-cost">—</div>
+              <div class="bill-card-label">Est. Daily Cost</div>
+            </div>
+          </div>
+          <div class="bill-summary-card bill-card-gold">
+            <div class="bill-card-icon">🧾</div>
+            <div class="bill-card-body">
+              <div class="bill-card-val" id="bill-total">—</div>
+              <div class="bill-card-label">Est. Monthly Bill</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charge breakdown table -->
+        <div class="bill-breakdown" id="bill-breakdown">
+          <div class="bill-section-title">⚡ Energy Charge Breakdown (Tiered)</div>
+          <div class="bill-tier-table" id="bill-tier-rows">
+            <!-- Rows injected by JS -->
+          </div>
+          <div class="bill-line">
+            <span class="bill-line-label">⚡ Energy Total</span>
+            <span class="bill-line-val" id="bill-energy-total">—</span>
+          </div>
+          <div class="bill-line">
+            <span class="bill-line-label">$ Fixed Charge (Domestic)</span>
+            <span class="bill-line-val" id="bill-fixed">—</span>
+          </div>
+          <div class="bill-line bill-line-total">
+            <span class="bill-line-label">🧾 Estimated Total Bill</span>
+            <span class="bill-line-val" id="bill-grand-total">—</span>
+          </div>
+        </div>
+
+        <p style="font-size:0.73rem; color:var(--text-dim); margin-top:12px; text-align:center;">
+          Based on CEB Domestic Tariff 2024. Actual bill may vary. Fixed charge: LKR 1,500/month.
+        </p>
+      </section>
+
     </div><!-- /tab-analytics -->
 
 
@@ -378,7 +442,7 @@
             <div class="app-info-logo">⚡</div>
             <div>
               <div class="app-info-name">UPS Power Monitor</div>
-              <div class="app-info-ver" id="s-version">v1.1.0</div>
+              <div class="app-info-ver" id="s-version">v1.3.0</div>
               <a href="https://github.com/DMStyles/ups-monitor" target="_blank" class="gh-link">
                 View on GitHub →
               </a>
@@ -422,6 +486,13 @@
             <div class="setting-input-row">
               <input type="number" id="s-rate" class="setting-input" step="1" min="0" placeholder="30.00" />
             </div>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" for="s-billing-days">CEB Billing Cycle (days)</label>
+            <div class="setting-input-row">
+              <input type="number" id="s-billing-days" class="setting-input" step="1" min="28" max="35" placeholder="30" />
+            </div>
+            <p class="setting-hint">Number of days in your CEB billing period (usually 30).</p>
           </div>
           <div class="setting-group">
             <label class="setting-label" for="s-low-bat">Low Battery Alert Threshold (%)</label>

@@ -445,3 +445,87 @@ input:checked + .toggle-slider:before { transform: translateX(20px); }
 /* ── FOOTER ─────────────────────────────── */
 .footer { text-align: center; margin-top: 30px; font-size: 0.75rem; color: var(--text-dim); line-height: 1.8; }
 .footer code { font-family: var(--mono); color: var(--accent2); background: rgba(0,180,255,0.1); padding: 2px 6px; border-radius: 4px; }
+
+/* ── CEB BILL ESTIMATOR ─────────────────── */
+.bill-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+@media (max-width: 640px) { .bill-summary-row { grid-template-columns: 1fr; } }
+
+.bill-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.bill-summary-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+
+.bill-card-blue  { border-color: rgba(0,180,255,0.25); background: rgba(0,180,255,0.06); }
+.bill-card-green { border-color: rgba(0,229,160,0.25); background: rgba(0,229,160,0.06); }
+.bill-card-gold  { border-color: rgba(255,197,66,0.30); background: rgba(255,197,66,0.06); }
+
+.bill-card-icon { font-size: 2rem; line-height: 1; flex-shrink: 0; }
+.bill-card-body { display: flex; flex-direction: column; gap: 3px; }
+.bill-card-val   { font-size: 1.35rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.bill-card-label { font-size: 0.73rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.bill-card-blue  .bill-card-val { color: var(--accent2); }
+.bill-card-green .bill-card-val { color: var(--accent); }
+.bill-card-gold  .bill-card-val { color: var(--warn); }
+
+.bill-breakdown {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-sm);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.bill-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 10px;
+}
+
+.bill-tier-table { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.bill-tier-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.bill-tier-label  { font-size: 0.85rem; color: var(--text-muted); font-family: var(--mono); }
+.bill-tier-charge { font-size: 0.85rem; color: var(--text); font-weight: 600; font-family: var(--mono); }
+
+.bill-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.bill-line-label { font-size: 0.88rem; color: var(--text-muted); }
+.bill-line-val   { font-size: 0.95rem; font-weight: 600; color: var(--text); font-family: var(--mono); }
+
+.bill-line-total {
+  margin-top: 4px;
+  padding-top: 13px;
+  border-top: 2px solid rgba(255,197,66,0.4);
+}
+.bill-line-total .bill-line-label { font-weight: 700; font-size: 0.95rem; color: var(--warn); }
+.bill-line-total .bill-line-val   { font-size: 1.15rem; color: var(--warn); font-weight: 800; }

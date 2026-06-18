@@ -1,7 +1,7 @@
 """
-UPS Power Monitor v1.1.0
+UPS Power Monitor v1.3.0
 Standalone Windows desktop app — monitors UPS via ViewPower.
-Features: real-time dashboard, analytics, outage log, auto-updater, tray.
+Features: real-time dashboard, analytics, outage log, auto-updater, tray, CEB bill estimator.
 """
 
 import os
@@ -27,7 +27,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.1.0"
+VERSION = "v1.3.0"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -85,6 +85,9 @@ DEFAULT_SETTINGS = {
     "auto_shutdown_enabled": False,
     "auto_shutdown_pct":     10,
     "auto_shutdown_mins":    5,
+    # CEB billing settings
+    "billing_days":          30,
+    "billing_tariff":        "domestic",
 }
 
 settings: dict = {}
@@ -154,19 +157,74 @@ _shutdown_triggered = False
 _outage_start_time  = None
 
 # ══════════════════════════════════════════════════════
-#  WINDOWS AUTOSTART
+#  WINDOWS AUTOSTART  (Task Scheduler — most reliable)
 # ══════════════════════════════════════════════════════
-_REG_RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_REG_RUN    = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_TASK_NAME  = "UPS Power Monitor"
+
+
+def _find_launcher() -> str:
+    """Return the best executable / script path to launch the app."""
+    # Preferred: compiled .exe sitting next to this file
+    exe = BASE_DIR / f"{APP_NAME}.exe"
+    if exe.exists():
+        return str(exe)
+    # Compiled .exe next to sys.executable (PyInstaller one-file)
+    exe2 = Path(sys.executable).with_name(f"{APP_NAME}.exe")
+    if exe2.exists():
+        return str(exe2)
+    # Fall back to the .bat launcher created by install.bat
+    bat = BASE_DIR / "start_ups_monitor_minimized.bat"
+    if bat.exists():
+        return str(bat)
+    # Last resort: pythonw + this script
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    if not pythonw.exists():
+        pythonw = Path(sys.executable)
+    return f'"{pythonw}" "{BASE_DIR / "ups_monitor.py"}" --minimized'
 
 
 def set_autostart(enabled: bool):
+    """Enable / disable autostart using Windows Task Scheduler (primary)
+    and the Registry Run key (fallback compatibility)."""
+    launcher = _find_launcher()
+
+    # ── Task Scheduler ────────────────────────────────────────────────
     try:
-        exe = Path(sys.executable).parent / f"{APP_NAME}.exe"
-        if not exe.exists():
-            exe = Path(sys.executable)
+        if enabled:
+            # Delete old task first to avoid duplicates
+            subprocess.run(
+                ["schtasks", "/delete", "/tn", _TASK_NAME, "/f"],
+                capture_output=True, shell=False
+            )
+            # Create a new ONLOGON task with a 30-second delay
+            result = subprocess.run(
+                [
+                    "schtasks", "/create",
+                    "/tn",    _TASK_NAME,
+                    "/tr",    f'"{launcher}"',
+                    "/sc",    "ONLOGON",
+                    "/delay", "0000:30",
+                    "/rl",    "HIGHEST",
+                    "/f",
+                ],
+                capture_output=True, text=True, shell=False
+            )
+            if result.returncode != 0:
+                log.warning(f"schtasks create failed: {result.stderr.strip()}")
+        else:
+            subprocess.run(
+                ["schtasks", "/delete", "/tn", _TASK_NAME, "/f"],
+                capture_output=True, shell=False
+            )
+    except Exception as e:
+        log.error(f"Task Scheduler autostart error: {e}")
+
+    # ── Registry Run (secondary / legacy) ─────────────────────────────
+    try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_RUN, 0, winreg.KEY_SET_VALUE)
         if enabled:
-            winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, f'"{exe}"')
+            winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, f'"{launcher}" --minimized')
         else:
             try:
                 winreg.DeleteValue(key, APP_NAME)
@@ -174,10 +232,22 @@ def set_autostart(enabled: bool):
                 pass
         winreg.CloseKey(key)
     except Exception as e:
-        log.error(f"Autostart error: {e}")
+        log.error(f"Registry autostart error: {e}")
 
 
 def get_autostart() -> bool:
+    """Return True if the Task Scheduler task OR the Registry entry exists."""
+    # Check Task Scheduler first
+    try:
+        r = subprocess.run(
+            ["schtasks", "/query", "/tn", _TASK_NAME],
+            capture_output=True, text=True, shell=False
+        )
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+    # Fallback: check Registry
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _REG_RUN, 0, winreg.KEY_READ)
         winreg.QueryValueEx(key, APP_NAME)
@@ -407,6 +477,53 @@ def get_daily_stats(target_date: str = None) -> dict:
     except Exception as e:
         log.error(f"Daily stats error: {e}")
         return {"date": target_date, "kwh": 0, "cost_lkr": 0, "samples": 0}
+
+
+# ══════════════════════════════════════════════════════
+#  CEB BILL ESTIMATOR  (Sri Lanka Domestic Tariff 2024)
+# ══════════════════════════════════════════════════════
+# Tiered energy rates (LKR per unit)
+CEB_TIERS = [
+    (60,  14.00),   # first 60 units  @ LKR 14.00 / unit
+    (30,  20.00),   # next  30 units  @ LKR 20.00 / unit  (61 – 90)
+    (30,  28.00),   # next  30 units  @ LKR 28.00 / unit  (91 – 120)
+    (None, 44.00),  # remaining units @ LKR 44.00 / unit  (121 +)
+]
+CEB_FIXED_CHARGE = 1_500.00   # LKR per month
+
+
+def calc_ceb_bill(units: float) -> dict:
+    """Calculate a CEB domestic electricity bill given consumption in kWh.
+    Returns a detailed breakdown dict.
+    """
+    remaining = units
+    breakdown = []
+    energy_total = 0.0
+
+    for limit, rate in CEB_TIERS:
+        if remaining <= 0:
+            break
+        block = min(remaining, limit) if limit is not None else remaining
+        charge = round(block * rate, 2)
+        breakdown.append({
+            "units": round(block, 2),
+            "rate":  rate,
+            "charge": charge,
+        })
+        energy_total += charge
+        remaining -= block
+
+    energy_total = round(energy_total, 2)
+    total        = round(energy_total + CEB_FIXED_CHARGE, 2)
+
+    return {
+        "units":          round(units, 2),
+        "breakdown":      breakdown,
+        "energy_charge":  energy_total,
+        "fixed_charge":   CEB_FIXED_CHARGE,
+        "total":          total,
+        "fixed_charge_label": "Fixed Charge (Domestic)",
+    }
 
 
 def get_monthly_data(month: str = None) -> list:
@@ -940,6 +1057,46 @@ def api_daily():
 def api_monthly():
     month = request.args.get("month", date.today().strftime("%Y-%m"))
     return jsonify(get_monthly_data(month))
+
+
+@flask_app.route("/api/bill_estimate")
+def api_bill_estimate():
+    """Return a CEB bill estimate for the requested month (or the current one).
+
+    Query params:
+      month   – YYYY-MM  (default: current month)
+      days    – billing cycle length (default: 30)
+    """
+    month      = request.args.get("month", date.today().strftime("%Y-%m"))
+    bill_days  = int(request.args.get("days", settings.get("billing_days", 30)))
+
+    # Sum kWh for the month from the DB
+    daily_data = get_monthly_data(month)
+    recorded_kwh  = sum(d["kwh"] for d in daily_data)
+    recorded_days = len([d for d in daily_data if d["samples"] > 0])
+
+    # Project to full billing cycle if we only have partial data
+    if recorded_days > 0 and recorded_days < bill_days:
+        projected_kwh = (recorded_kwh / recorded_days) * bill_days
+    else:
+        projected_kwh = recorded_kwh
+
+    today_stats   = get_daily_stats()
+    daily_avg_kwh = (recorded_kwh / recorded_days) if recorded_days > 0 else today_stats["kwh"]
+
+    bill      = calc_ceb_bill(projected_kwh)
+    daily_est = calc_ceb_bill(daily_avg_kwh)
+
+    return jsonify({
+        "month":           month,
+        "recorded_kwh":    round(recorded_kwh, 3),
+        "projected_kwh":   round(projected_kwh, 3),
+        "recorded_days":   recorded_days,
+        "bill_days":       bill_days,
+        "daily_avg_kwh":   round(daily_avg_kwh, 4),
+        "monthly_bill":    bill,
+        "daily_cost":      daily_est,
+    })
 
 
 @flask_app.route("/api/trends")

@@ -2,6 +2,7 @@ let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltCh
 let globalMaxWatts = 840;
 let fastPollInterval = 2000;
 let currentMonth = new Date().toISOString().slice(0, 7);
+let currentBillMonth = new Date().toISOString().slice(0, 7);
 
 // Chart.js global config
 Chart.defaults.color = '#7b8db0';
@@ -56,6 +57,8 @@ async function loadSettings() {
     document.getElementById('s-shutdown-pct').value = settings.auto_shutdown_pct || 10;
     document.getElementById('s-shutdown-mins').value = settings.auto_shutdown_mins || 5;
     
+    document.getElementById('s-billing-days').value = settings.billing_days || 30;
+    
     document.getElementById('s-fast-poll').value = settings.fast_poll_interval || 2;
     document.getElementById('s-fast-poll-val').innerText = (settings.fast_poll_interval || 2) + 's';
     fastPollInterval = (settings.fast_poll_interval || 2) * 1000;
@@ -102,6 +105,7 @@ async function saveSettings() {
     auto_shutdown_enabled: document.getElementById('s-auto-shutdown').checked,
     auto_shutdown_pct: parseInt(document.getElementById('s-shutdown-pct').value),
     auto_shutdown_mins: parseInt(document.getElementById('s-shutdown-mins').value),
+    billing_days: parseInt(document.getElementById('s-billing-days').value) || 30,
     fast_poll_interval: parseInt(document.getElementById('s-fast-poll').value),
     db_write_interval: parseInt(document.getElementById('s-db-write').value),
     notifications_enabled: document.getElementById('s-notifications').checked,
@@ -299,6 +303,9 @@ async function loadAnalytics() {
   } catch (err) {
     console.error("Analytics load error", err);
   }
+  
+  // Load bill estimator
+  loadBillEstimate();
 }
 
 function changeMonth(delta) {
@@ -306,6 +313,53 @@ function changeMonth(delta) {
   d.setMonth(d.getMonth() + delta);
   currentMonth = d.toISOString().slice(0, 7);
   loadAnalytics();
+}
+
+// ───────────────────────────────────────────────────────────
+// CEB BILL ESTIMATOR
+// ───────────────────────────────────────────────────────────
+async function loadBillEstimate() {
+  const billDays = parseInt(document.getElementById('s-billing-days')?.value) || 30;
+  document.getElementById('bill-month-label').innerText = currentBillMonth;
+  try {
+    const res = await fetch(`/api/bill_estimate?month=${currentBillMonth}&days=${billDays}`);
+    const data = await res.json();
+    const bill = data.monthly_bill;
+    const daily = data.daily_cost;
+
+    // Summary cards
+    document.getElementById('bill-proj-kwh').innerText = data.projected_kwh.toFixed(2) + ' kWh';
+    
+    // Daily cost = total daily bill amount (energy + prorated fixed)
+    const dailyTotal = daily.energy_charge + (1500 / billDays);
+    document.getElementById('bill-daily-cost').innerText = 'LKR ' + dailyTotal.toFixed(2);
+    document.getElementById('bill-total').innerText = 'LKR ' + bill.total.toLocaleString('en-LK', {minimumFractionDigits: 2});
+
+    // Tier breakdown rows
+    const tierContainer = document.getElementById('bill-tier-rows');
+    tierContainer.innerHTML = bill.breakdown.map(tier => {
+      const label = `LKR ${tier.rate.toFixed(2)} × ${tier.units.toFixed(2)} units`;
+      return `
+        <div class="bill-tier-row">
+          <span class="bill-tier-label">${label}</span>
+          <span class="bill-tier-charge">= LKR ${tier.charge.toLocaleString('en-LK', {minimumFractionDigits: 2})}</span>
+        </div>`;
+    }).join('');
+
+    document.getElementById('bill-energy-total').innerText = 'LKR ' + bill.energy_charge.toLocaleString('en-LK', {minimumFractionDigits: 2});
+    document.getElementById('bill-fixed').innerText = 'LKR 1,500.00';
+    document.getElementById('bill-grand-total').innerText = 'LKR ' + bill.total.toLocaleString('en-LK', {minimumFractionDigits: 2});
+
+  } catch (e) {
+    console.error('Bill estimate error:', e);
+  }
+}
+
+function changeBillMonth(delta) {
+  const d = new Date(currentBillMonth + '-01');
+  d.setMonth(d.getMonth() + delta);
+  currentBillMonth = d.toISOString().slice(0, 7);
+  loadBillEstimate();
 }
 
 async function showDailyDetail(dateStr) {
