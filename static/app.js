@@ -230,9 +230,14 @@ async function pollStatus() {
     document.getElementById('v-mode').innerText = d.ups_mode;
     document.getElementById('v-batvolt').innerText = d.battery_voltage.toFixed(1) + ' V';
     
-    if (d.temperature !== null) {
+    // Show temperature only if the model has a sensor AND reading is valid (non-null, non-zero)
+    const tempSupported = d.temperature_supported !== false;
+    const tempValid     = d.temperature !== null && d.temperature !== 0;
+    if (tempSupported && tempValid) {
       document.getElementById('v-temp-item').style.display = 'flex';
-      document.getElementById('v-temp').innerText = d.temperature.toFixed(1) + ' °C';
+      document.getElementById('v-temp').innerText = d.temperature.toFixed(1) + ' \u00b0C';
+    } else {
+      document.getElementById('v-temp-item').style.display = 'none';
     }
     
     // Battery alert & runtime

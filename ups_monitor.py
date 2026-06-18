@@ -34,16 +34,17 @@ VERSION = "v1.3.0"
 # ══════════════════════════════════════════════════════
 UPS_MODELS = {
     "Prolink PRO1201SFC": {
-        "va":            1200,
-        "power_factor":  0.7,
-        "max_watts":     840,
-        "battery_wh":    196.8,          # 2 × 12 V × 8.2 Ah
-        "battery_desc":  "2 × 12 V / 8.2 Ah",
-        "input_range":   "140–300 VAC",
-        "output_voltage":"230 VAC ± 10 %",
-        "waveform":      "Simulated Sine (battery) / Pure Sine (line)",
-        "transfer_time": "≤ 2 ms",
-        "recharge_time": "2–4 h to 90 %",
+        "va":                    1200,
+        "power_factor":          0.7,
+        "max_watts":             840,
+        "battery_wh":            196.8,          # 2 × 12 V × 8.2 Ah
+        "battery_desc":          "2 × 12 V / 8.2 Ah",
+        "input_range":           "140–300 VAC",
+        "output_voltage":        "230 VAC ± 10 %",
+        "waveform":              "Simulated Sine (battery) / Pure Sine (line)",
+        "transfer_time":         "≤ 2 ms",
+        "recharge_time":         "2–4 h to 90 %",
+        "temperature_supported": False,   # No onboard temperature sensor
     },
 }
 
@@ -701,7 +702,11 @@ class ViewPowerClient:
                 except: return d
 
             temp_raw = wi.get("temperature") or wi.get("upsTemp") or wi.get("temp")
-            temp = f(temp_raw) if temp_raw else None
+            temp_val = f(temp_raw) if temp_raw else None
+            # ViewPower returns 0.0 when the UPS has no temperature sensor—treat as None
+            if temp_val == 0.0:
+                temp_val = None
+            temp = temp_val
 
             return {
                 "input_voltage":    f(wi.get("inputVoltage")),
@@ -1010,13 +1015,14 @@ def api_status():
     today = get_daily_stats()
     cfg   = get_model_cfg()
     s.update({
-        "daily_kwh":  today["kwh"],
-        "daily_cost": today["cost_lkr"],
-        "samples":    today["samples"],
-        "elec_rate":  settings.get("elec_rate", 30.0),
-        "max_watts":  cfg["max_watts"],
-        "ups_model":  settings.get("ups_model", "Prolink PRO1201SFC"),
-        "version":    VERSION,
+        "daily_kwh":             today["kwh"],
+        "daily_cost":            today["cost_lkr"],
+        "samples":               today["samples"],
+        "elec_rate":             settings.get("elec_rate", 30.0),
+        "max_watts":             cfg["max_watts"],
+        "ups_model":             settings.get("ups_model", "Prolink PRO1201SFC"),
+        "temperature_supported": cfg.get("temperature_supported", True),
+        "version":               VERSION,
     })
     return jsonify(s)
 
