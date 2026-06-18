@@ -1026,6 +1026,47 @@ def api_settings():
     global settings
     if request.method == "POST":
         body = request.get_json(force=True)
+
+        # ── Server-side sanity guard ───────────────────────────────────
+        # Numeric fields are validated before being accepted so a corrupt
+        # or accidental client-side value (NaN, None, negative) can never
+        # silently overwrite a previously valid setting.
+        def _safe_float(key: str, lo: float = 0.0, hi: float = 1e9) -> None:
+            if key not in body:
+                return
+            try:
+                v = float(body[key])
+                if lo <= v <= hi:
+                    body[key] = v
+                else:
+                    log.warning(f"Settings POST: {key}={v} out of range [{lo},{hi}], ignored.")
+                    del body[key]
+            except (TypeError, ValueError):
+                log.warning(f"Settings POST: {key}={body[key]!r} is not numeric, ignored.")
+                del body[key]
+
+        def _safe_int(key: str, lo: int = 0, hi: int = 10_000) -> None:
+            if key not in body:
+                return
+            try:
+                v = int(body[key])
+                if lo <= v <= hi:
+                    body[key] = v
+                else:
+                    log.warning(f"Settings POST: {key}={v} out of range [{lo},{hi}], ignored.")
+                    del body[key]
+            except (TypeError, ValueError):
+                log.warning(f"Settings POST: {key}={body[key]!r} is not numeric, ignored.")
+                del body[key]
+
+        _safe_float("elec_rate",             lo=0.0,  hi=10_000.0)
+        _safe_int("low_battery_threshold",   lo=5,    hi=50)
+        _safe_int("fast_poll_interval",      lo=1,    hi=60)
+        _safe_int("db_write_interval",       lo=30,   hi=600)
+        _safe_int("auto_shutdown_pct",       lo=5,    hi=99)
+        _safe_int("auto_shutdown_mins",      lo=0,    hi=1440)
+        _safe_int("billing_days",            lo=28,   hi=35)
+
         settings.update(body)
         if "autostart" in body:
             set_autostart(bool(body["autostart"]))

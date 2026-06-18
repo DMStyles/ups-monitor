@@ -98,34 +98,57 @@ function onModelChange() {
 }
 
 async function saveSettings() {
+  // ── Validate numeric fields before building payload ──────
+  const rateRaw   = parseFloat(document.getElementById('s-rate').value);
+  const lowBatRaw = parseInt(document.getElementById('s-low-bat').value);
+  const sdPctRaw  = parseInt(document.getElementById('s-shutdown-pct').value);
+  const sdMinsRaw = parseInt(document.getElementById('s-shutdown-mins').value);
+  const bdaysRaw  = parseInt(document.getElementById('s-billing-days').value);
+
+  const errors = [];
+  if (isNaN(rateRaw)   || rateRaw < 0)            errors.push('Electricity Rate must be a positive number.');
+  if (isNaN(lowBatRaw) || lowBatRaw < 5 || lowBatRaw > 50)  errors.push('Low Battery Threshold must be between 5 and 50%.');
+  if (isNaN(sdPctRaw)  || sdPctRaw < 5 || sdPctRaw > 99)    errors.push('Shutdown battery % must be between 5 and 99.');
+  if (isNaN(sdMinsRaw) || sdMinsRaw < 0)          errors.push('Shutdown time (minutes) must be 0 or more.');
+
+  if (errors.length > 0) {
+    const status = document.getElementById('save-status');
+    status.innerText = '\u26a0\ufe0f ' + errors[0];
+    status.style.color = 'var(--danger)';
+    status.classList.add('show');
+    setTimeout(() => { status.classList.remove('show'); status.style.color = ''; }, 4000);
+    return;
+  }
+
   const payload = {
-    ups_model: document.getElementById('s-model').value,
-    elec_rate: parseFloat(document.getElementById('s-rate').value),
-    low_battery_threshold: parseInt(document.getElementById('s-low-bat').value),
+    ups_model:             document.getElementById('s-model').value,
+    elec_rate:             rateRaw,
+    low_battery_threshold: lowBatRaw,
     auto_shutdown_enabled: document.getElementById('s-auto-shutdown').checked,
-    auto_shutdown_pct: parseInt(document.getElementById('s-shutdown-pct').value),
-    auto_shutdown_mins: parseInt(document.getElementById('s-shutdown-mins').value),
-    billing_days: parseInt(document.getElementById('s-billing-days').value) || 30,
-    fast_poll_interval: parseInt(document.getElementById('s-fast-poll').value),
-    db_write_interval: parseInt(document.getElementById('s-db-write').value),
+    auto_shutdown_pct:     sdPctRaw,
+    auto_shutdown_mins:    sdMinsRaw,
+    billing_days:          isNaN(bdaysRaw) ? 30 : Math.max(28, Math.min(35, bdaysRaw)),
+    fast_poll_interval:    parseInt(document.getElementById('s-fast-poll').value),
+    db_write_interval:     parseInt(document.getElementById('s-db-write').value),
     notifications_enabled: document.getElementById('s-notifications').checked,
-    ntfy_topic: document.getElementById('s-ntfy').value.trim(),
-    autostart: document.getElementById('s-autostart').checked,
+    ntfy_topic:            document.getElementById('s-ntfy').value.trim(),
+    autostart:             document.getElementById('s-autostart').checked,
   };
-  
+
   try {
     await fetch('/api/settings', { method: 'POST', body: JSON.stringify(payload) });
     const status = document.getElementById('save-status');
-    status.innerText = "Saved successfully!";
+    status.innerText = '\u2705 Saved successfully!';
+    status.style.color = '';
     status.classList.add('show');
-    setTimeout(() => status.classList.remove('show'), 2000);
-    
+    setTimeout(() => status.classList.remove('show'), 2500);
+
     fastPollInterval = payload.fast_poll_interval * 1000;
     document.getElementById('live-interval').innerText = payload.fast_poll_interval;
     loadWeekData(); // re-calc costs
-    
+
   } catch (err) {
-    alert("Failed to save settings");
+    alert('Failed to save settings. Please try again.');
   }
 }
 
@@ -135,6 +158,19 @@ document.getElementById('s-fast-poll').addEventListener('input', e => {
 });
 document.getElementById('s-db-write').addEventListener('input', e => {
   document.getElementById('s-db-write-val').innerText = e.target.value + 's';
+});
+
+// ─────────────────────────────────────────────────────────
+// PREVENT SCROLL WHEEL FROM CHANGING NUMBER INPUTS
+// This is the root cause of the "rate randomly drops" bug:
+// hovering a number input while scrolling the page silently
+// changes its value, which then gets saved on next Save click.
+// ─────────────────────────────────────────────────────────
+document.querySelectorAll('input[type=number]').forEach(input => {
+  input.addEventListener('wheel', e => {
+    e.preventDefault();
+    input.blur();
+  }, { passive: false });
 });
 
 // ─────────────────────────────────────────────────────────
