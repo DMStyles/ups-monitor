@@ -350,15 +350,15 @@ async function loadAnalytics() {
       }).join('');
     }
     
+    // Update Battery Health UI
+    updateBatteryHealthUI(hData);
+    
   } catch (err) {
     console.error("Analytics load error", err);
   }
   
   // Load bill estimator
   loadBillEstimate();
-  
-  // Update Battery Health UI
-  updateBatteryHealthUI(hData);
 }
 
 function updateBatteryHealthUI(h) {
