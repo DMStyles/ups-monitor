@@ -13,7 +13,13 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
   
   document.getElementById(`tab-btn-${tabId}`).classList.add('active');
-  document.getElementById(`tab-${tabId}`).classList.add('active');
+  const activePanel = document.getElementById(`tab-${tabId}`);
+  activePanel.classList.add('active');
+
+  // Force browser reflow to restart CSS fade-in animation on every switch
+  activePanel.style.animation = 'none';
+  void activePanel.offsetHeight;
+  activePanel.style.animation = '';
 
   if (tabId === 'analytics') {
     loadAnalytics();
