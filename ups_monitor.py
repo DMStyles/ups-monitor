@@ -1,7 +1,8 @@
 """
-UPS Power Monitor v1.3.0
+UPS Power Monitor v1.4.0
 Standalone Windows desktop app — monitors UPS via ViewPower.
-Features: real-time dashboard, analytics, outage log, auto-updater, tray, CEB bill estimator.
+Features: real-time dashboard, analytics, battery health tracker, on-battery warning theme,
+          dynamic CEB bill estimator (D-2026/05 tariff), outage log, auto-updater, tray icon.
 """
 
 import os
@@ -27,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.3.0"
+VERSION = "v1.4.0"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
