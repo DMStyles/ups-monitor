@@ -488,27 +488,65 @@ def get_daily_stats(target_date: str = None) -> dict:
 
 
 # ══════════════════════════════════════════════════════
-#  CEB BILL ESTIMATOR  (Sri Lanka Domestic Tariff 2024)
+#  CEB BILL ESTIMATOR  (Sri Lanka Domestic Tariff 2026/05)
 # ══════════════════════════════════════════════════════
-# Tiered energy rates (LKR per unit)
-CEB_TIERS = [
-    (60,  14.00),   # first 60 units  @ LKR 14.00 / unit
-    (30,  20.00),   # next  30 units  @ LKR 20.00 / unit  (61 – 90)
-    (30,  28.00),   # next  30 units  @ LKR 28.00 / unit  (91 – 120)
-    (None, 44.00),  # remaining units @ LKR 44.00 / unit  (121 +)
-]
-CEB_FIXED_CHARGE = 1_500.00   # LKR per month
 
 
 def calc_ceb_bill(units: float) -> dict:
     """Calculate a CEB domestic electricity bill given consumption in kWh.
-    Returns a detailed breakdown dict.
+    Returns a detailed breakdown dict matching CEB D-2026/05 tariff structure.
     """
+    if units <= 0:
+        return {
+            "units":          0.0,
+            "breakdown":      [],
+            "energy_charge":  0.0,
+            "fixed_charge":   0.0,
+            "sscl_tax":       0.0,
+            "total":          0.0,
+            "fixed_charge_label": "Fixed Charge (Domestic)",
+        }
+
+    # Round units to 2 decimal places for billing
+    units = round(units, 2)
+
+    # 1. Determine Tariff Block and Tiers based on monthly consumption
+    if units <= 60.0:
+        # Low consumption block (0 - 60 kWh)
+        tiers = [
+            (30.0, 5.00),   # 0–30 kWh @ Rs. 5.00
+            (30.0, 9.00),   # 31–60 kWh @ Rs. 9.00
+        ]
+        # Fixed charge based on actual consumption
+        if units <= 30.0:
+            fixed_charge = 80.00
+        else:
+            fixed_charge = 210.00
+    else:
+        # Standard block (> 60 kWh)
+        tiers = [
+            (60.0,  14.00),  # first 60 units @ Rs. 14.00
+            (30.0,  20.00),  # next 30 units (61–90) @ Rs. 20.00
+            (30.0,  28.00),  # next 30 units (91–120) @ Rs. 28.00
+            (60.0,  44.00),  # next 60 units (121–180) @ Rs. 44.00
+            (None,  100.00), # units above 180 (181+) @ Rs. 100.00 (revised May 2026)
+        ]
+        # Fixed charge based on actual consumption
+        if units <= 90.0:
+            fixed_charge = 400.00
+        elif units <= 120.0:
+            fixed_charge = 1000.00
+        elif units <= 180.0:
+            fixed_charge = 1500.00
+        else:
+            fixed_charge = 3410.00
+
+    # 2. Calculate Energy Charge
     remaining = units
     breakdown = []
-    energy_total = 0.0
+    energy_charge = 0.0
 
-    for limit, rate in CEB_TIERS:
+    for limit, rate in tiers:
         if remaining <= 0:
             break
         block = min(remaining, limit) if limit is not None else remaining
@@ -518,17 +556,26 @@ def calc_ceb_bill(units: float) -> dict:
             "rate":  rate,
             "charge": charge,
         })
-        energy_total += charge
+        energy_charge += charge
         remaining -= block
 
-    energy_total = round(energy_total, 2)
-    total        = round(energy_total + CEB_FIXED_CHARGE, 2)
+    energy_charge = round(energy_charge, 2)
+    
+    # 3. Calculate SSCL Tax (2.5% on 102.5% of liable turnover = 2.5% / 97.5% of subtotal)
+    # The screenshots show that SSCL is ceiling-rounded (rounded up to next cent).
+    subtotal = energy_charge + fixed_charge
+    import math
+    sscl_tax = math.ceil(subtotal * 2.5 / 97.5 * 100) / 100.0
+    
+    # Total Bill = Subtotal + SSCL Tax
+    total = round(subtotal + sscl_tax, 2)
 
     return {
-        "units":          round(units, 2),
+        "units":          units,
         "breakdown":      breakdown,
-        "energy_charge":  energy_total,
-        "fixed_charge":   CEB_FIXED_CHARGE,
+        "energy_charge":  energy_charge,
+        "fixed_charge":   fixed_charge,
+        "sscl_tax":       sscl_tax,
         "total":          total,
         "fixed_charge_label": "Fixed Charge (Domestic)",
     }

@@ -235,11 +235,14 @@ async function pollStatus() {
     // Show temperature only if the model has a sensor AND reading is valid (non-null, non-zero)
     const tempSupported = d.temperature_supported !== false;
     const tempValid     = d.temperature !== null && d.temperature !== 0;
+    const batcapItem    = document.getElementById('v-batcap-item');
     if (tempSupported && tempValid) {
       document.getElementById('v-temp-item').style.display = 'flex';
       document.getElementById('v-temp').innerText = d.temperature.toFixed(1) + ' \u00b0C';
+      if (batcapItem) batcapItem.classList.add('battery-full');
     } else {
       document.getElementById('v-temp-item').style.display = 'none';
+      if (batcapItem) batcapItem.classList.remove('battery-full');
     }
     
     // Battery alert & runtime
@@ -445,8 +448,8 @@ async function loadBillEstimate() {
     // Summary cards
     document.getElementById('bill-proj-kwh').innerText = data.projected_kwh.toFixed(2) + ' kWh';
     
-    // Daily cost = total daily bill amount (energy + prorated fixed)
-    const dailyTotal = daily.energy_charge + (1500 / billDays);
+    // Daily cost = total monthly projected bill divided by bill cycle days
+    const dailyTotal = bill.total / billDays;
     document.getElementById('bill-daily-cost').innerText = 'LKR ' + dailyTotal.toFixed(2);
     document.getElementById('bill-total').innerText = 'LKR ' + bill.total.toLocaleString('en-LK', {minimumFractionDigits: 2});
 
@@ -462,7 +465,8 @@ async function loadBillEstimate() {
     }).join('');
 
     document.getElementById('bill-energy-total').innerText = 'LKR ' + bill.energy_charge.toLocaleString('en-LK', {minimumFractionDigits: 2});
-    document.getElementById('bill-fixed').innerText = 'LKR 1,500.00';
+    document.getElementById('bill-fixed').innerText = 'LKR ' + bill.fixed_charge.toLocaleString('en-LK', {minimumFractionDigits: 2});
+    document.getElementById('bill-sscl').innerText = 'LKR ' + bill.sscl_tax.toLocaleString('en-LK', {minimumFractionDigits: 2});
     document.getElementById('bill-grand-total').innerText = 'LKR ' + bill.total.toLocaleString('en-LK', {minimumFractionDigits: 2});
 
   } catch (e) {

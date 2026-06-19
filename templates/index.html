@@ -168,7 +168,7 @@
                 <div class="vital-val mono" id="v-temp">—</div>
               </div>
             </div>
-            <div class="vital-item battery-full">
+            <div class="vital-item battery-full" id="v-batcap-item">
               <div class="vital-icon bat-color">🪫</div>
               <div class="vital-info">
                 <div class="vital-label">Battery Capacity</div>
@@ -450,6 +450,10 @@
             <span class="bill-line-label">$ Fixed Charge (Domestic)</span>
             <span class="bill-line-val" id="bill-fixed">—</span>
           </div>
+          <div class="bill-line">
+            <span class="bill-line-label">🏛️ SSCL Tax (2.5%)</span>
+            <span class="bill-line-val" id="bill-sscl">—</span>
+          </div>
           <div class="bill-line bill-line-total">
             <span class="bill-line-label">🧾 Estimated Total Bill</span>
             <span class="bill-line-val" id="bill-grand-total">—</span>
@@ -457,7 +461,7 @@
         </div>
 
         <p style="font-size:0.73rem; color:var(--text-dim); margin-top:12px; text-align:center;">
-          Based on CEB Domestic Tariff 2024. Actual bill may vary. Fixed charge: LKR 1,500/month.
+          Based on CEB Domestic Tariff D-2026/05 (May 2026). Actual bill may vary. Includes SSCL levy.
         </p>
       </section>
 
