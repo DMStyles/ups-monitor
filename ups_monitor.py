@@ -1183,6 +1183,12 @@ def index():
     return render_template("index.html")
 
 
+@flask_app.route("/favicon.ico")
+def favicon():
+    return flask_app.send_from_directory(str(BASE_DIR / "static"), "favicon.ico")
+
+
+
 @flask_app.route("/api/status")
 def api_status():
     with state_lock:
@@ -1612,24 +1618,58 @@ def main():
     def set_native_icon():
         if sys.platform == "win32":
             try:
+                # Wait for native window to be initialized (up to 3 seconds)
+                for _ in range(30):
+                    if window.native is not None:
+                        break
+                    time.sleep(0.1)
+                
+                if window.native is None:
+                    log.warning("Native window never initialized, cannot set icon")
+                    return
+                
+                native_type = type(window.native).__name__
+                log.info(f"Native window initialized. Type: {native_type}")
+                
                 icon_path = str(BASE_DIR / "static" / "favicon.ico")
                 if not os.path.exists(icon_path):
+                    log.warning(f"Icon path not found: {icon_path}")
                     return
                 
                 import clr
-                native_type = type(window.native).__name__
+                
                 if "Form" in native_type:  # WinForms Form
                     clr.AddReference('System.Drawing')
+                    clr.AddReference('System.Windows.Forms')
                     from System.Drawing import Icon
-                    window.native.Icon = Icon(icon_path)
-                    log.info("Set native WinForms window icon successfully")
+                    from System import Action
+                    
+                    def set_winforms_icon():
+                        window.native.Icon = Icon(icon_path)
+                        log.info("Set native WinForms window icon successfully")
+                        
+                    if window.native.InvokeRequired:
+                        window.native.Invoke(Action(set_winforms_icon))
+                    else:
+                        set_winforms_icon()
+                        
                 elif "Window" in native_type:  # WPF Window
                     clr.AddReference('System.Windows.Presentation')
                     clr.AddReference('PresentationCore')
+                    clr.AddReference('WindowsBase')
                     from System.Windows.Media.Imaging import BitmapFrame
-                    from System import Uri
-                    window.native.Icon = BitmapFrame.Create(Uri(icon_path))
-                    log.info("Set native WPF window icon successfully")
+                    from System import Uri, Action
+                    
+                    def set_wpf_icon():
+                        window.native.Icon = BitmapFrame.Create(Uri(icon_path))
+                        log.info("Set native WPF window icon successfully")
+                        
+                    if not window.native.Dispatcher.CheckAccess():
+                        window.native.Dispatcher.Invoke(Action(set_wpf_icon))
+                    else:
+                        set_wpf_icon()
+                else:
+                    log.warning(f"Unknown native window type: {native_type}")
             except Exception as e:
                 log.warning(f"Could not set native window icon: {e}")
 

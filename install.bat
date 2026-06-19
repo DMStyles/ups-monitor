@@ -120,12 +120,21 @@ if not exist "%PYTHONW_EXE%" (
 
 :: Create Desktop Shortcut
 echo Creating Desktop Shortcut...
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Desktop = $WshShell.SpecialFolders.Item('Desktop'); $Shortcut = $WshShell.CreateShortcut(\"$Desktop\UPS Power Monitor.lnk\"); $Shortcut.TargetPath = '%PYTHONW_EXE%'; $Shortcut.Arguments = '\"%~dp0ups_monitor.py\"'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0static\favicon.ico'; $Shortcut.Save()"
+set "EXE_PATH=%~dp0dist\UPS Power Monitor\UPS Power Monitor.exe"
+if exist "!EXE_PATH!" (
+  powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Desktop = $WshShell.SpecialFolders.Item('Desktop'); $Shortcut = $WshShell.CreateShortcut(\"$Desktop\UPS Power Monitor.lnk\"); $Shortcut.TargetPath = '!EXE_PATH!'; $Shortcut.WorkingDirectory = '%~dp0dist\UPS Power Monitor'; $Shortcut.Save()"
+) else (
+  powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Desktop = $WshShell.SpecialFolders.Item('Desktop'); $Shortcut = $WshShell.CreateShortcut(\"$Desktop\UPS Power Monitor.lnk\"); $Shortcut.TargetPath = '%PYTHONW_EXE%'; $Shortcut.Arguments = '\"%~dp0ups_monitor.py\"'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0static\favicon.ico'; $Shortcut.Save()"
+)
 
 :: Configure Windows Startup task (runs minimized 30s after logon)
 echo Configuring Windows Autostart task...
 schtasks /delete /tn "UPS Power Monitor" /f >nul 2>&1
-schtasks /create /tn "UPS Power Monitor" /tr "\"%~dp0start_ups_monitor_minimized.bat\"" /sc ONLOGON /delay 0000:30 /f >nul 2>&1
+if exist "!EXE_PATH!" (
+  schtasks /create /tn "UPS Power Monitor" /tr "\"!EXE_PATH!\" --minimized" /sc ONLOGON /delay 0000:30 /f >nul 2>&1
+) else (
+  schtasks /create /tn "UPS Power Monitor" /tr "\"%~dp0start_ups_monitor_minimized.bat\"" /sc ONLOGON /delay 0000:30 /f >nul 2>&1
+)
 
 echo [OK] Launcher and shortcuts configured.
 echo.
