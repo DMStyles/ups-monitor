@@ -319,6 +319,41 @@
         </section>
       </div>
 
+      <!-- Battery Health Status Card -->
+      <section class="card analytics-section" id="battery-health-card">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">🔋 Battery Health Status</h2>
+        </div>
+        <div class="battery-health-body">
+          <!-- Left Side: Health Gauge and Badge -->
+          <div class="bh-main">
+            <div class="bh-score-wrap">
+              <div class="bh-score" id="bh-pct">—%</div>
+              <div class="bh-status-badge bh-status-nodata" id="bh-status-badge">Unknown</div>
+            </div>
+            <div class="bh-details">
+              <div class="bh-detail-item">
+                <span class="bh-detail-lbl">Average Full Voltage:</span>
+                <span class="bh-detail-val" id="bh-avg-v">— V</span>
+              </div>
+              <div class="bh-detail-item">
+                <span class="bh-detail-lbl">Battery Age:</span>
+                <span class="bh-detail-val" id="bh-age">—</span>
+              </div>
+            </div>
+          </div>
+          <!-- Right Side: Installation / Replacement Date Tracker -->
+          <div class="bh-install">
+            <label class="bh-install-lbl" for="bh-date-picker">Last Battery Replacement:</label>
+            <div class="bh-date-row">
+              <input type="date" id="bh-date-picker" class="export-date-input" style="padding: 6px 10px;" />
+              <button class="export-btn" onclick="saveBatteryReplacedDate()" id="bh-save-btn" style="padding: 6px 12px;">Save</button>
+            </div>
+            <p class="bh-hint">Keep this updated to track battery age and reset health alerts.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Power Outage Log -->
       <section class="card analytics-section">
         <div class="analytics-header">
@@ -499,6 +534,18 @@
             <div class="setting-input-row">
               <input type="number" id="s-low-bat" class="setting-input" step="1" min="5" max="50" placeholder="20" />
             </div>
+          </div>
+        </section>
+
+        <!-- Battery Maintenance -->
+        <section class="card settings-card">
+          <h2 class="card-title">Battery Maintenance</h2>
+          <div class="setting-group">
+            <label class="setting-label" for="s-battery-replaced">Battery Replaced Date</label>
+            <div class="setting-input-row">
+              <input type="date" id="s-battery-replaced" class="setting-input" style="padding:8px 12px; font-family:var(--mono);" />
+            </div>
+            <p class="setting-hint">Setting this date tracks battery age and calculates the health based on voltage drop since replacement.</p>
           </div>
         </section>
 

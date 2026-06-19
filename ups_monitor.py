@@ -45,6 +45,10 @@ UPS_MODELS = {
         "transfer_time":         "≤ 2 ms",
         "recharge_time":         "2–4 h to 90 %",
         "temperature_supported": False,   # No onboard temperature sensor
+        # Battery health thresholds (2 × 12 V lead-acid in series = 24 V nominal)
+        "battery_rated_v":       27.2,  # Healthy full charge (2 × 13.6 V)
+        "battery_warn_v":        25.0,  # Fair — capacity starting to drop
+        "battery_replace_v":     24.0,  # Poor — replace soon (2 × 12.0 V)
     },
 }
 
@@ -89,6 +93,9 @@ DEFAULT_SETTINGS = {
     # CEB billing settings
     "billing_days":          30,
     "billing_tariff":        "domestic",
+    # Battery health
+    "battery_replaced_date": "",   # ISO date e.g. "2023-01-15"
+    "health_alert_sent":     False, # prevent repeated poor-health notifications
 }
 
 settings: dict = {}
@@ -629,6 +636,105 @@ def export_csv(start_date: str, end_date: str) -> str:
         return ""
 
 
+
+# ══════════════════════════════════════════════════════
+#  BATTERY HEALTH TRACKER
+# ══════════════════════════════════════════════════════
+def get_battery_health() -> dict:
+    """Analyse historical battery voltage readings taken when the battery was
+    nearly fully charged (≥ 90 %) to estimate battery health over time.
+
+    Health % formula (per month):
+        health = (avg_full_v - replace_v) / (rated_v - replace_v) * 100
+    clamped to [0, 100].
+    """
+    cfg         = get_model_cfg()
+    rated_v     = cfg.get("battery_rated_v",  27.2)
+    warn_v      = cfg.get("battery_warn_v",   25.0)
+    replace_v   = cfg.get("battery_replace_v", 24.0)
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c    = conn.cursor()
+
+        # Monthly average voltage at high-charge (≥ 90 %)
+        c.execute("""
+            SELECT strftime('%Y-%m', ts)  AS month,
+                   AVG(battery_voltage)   AS avg_v,
+                   COUNT(*)               AS samples
+            FROM   readings
+            WHERE  battery_capacity >= 90
+              AND  battery_voltage  >  0
+            GROUP  BY month
+            ORDER  BY month ASC
+        """)
+        monthly = c.fetchall()
+        conn.close()
+    except Exception as e:
+        log.error(f"Battery health query error: {e}")
+        return {}
+
+    if not monthly:
+        return {
+            "status":         "no_data",
+            "health_pct":     None,
+            "current_avg_v":  None,
+            "rated_v":        rated_v,
+            "warn_v":         warn_v,
+            "replace_v":      replace_v,
+            "monthly_trend":  [],
+            "battery_age_days": None,
+            "replaced_date":  settings.get("battery_replaced_date", ""),
+        }
+
+    def _health(v: float) -> float:
+        if rated_v <= replace_v:
+            return 100.0
+        return max(0.0, min(100.0, (v - replace_v) / (rated_v - replace_v) * 100))
+
+    trend = [
+        {
+            "month":    r[0],
+            "avg_v":    round(r[1], 2),
+            "samples":  r[2],
+            "health":   round(_health(r[1]), 1),
+        }
+        for r in monthly
+    ]
+
+    current_avg_v  = trend[-1]["avg_v"]
+    current_health = round(_health(current_avg_v), 1)
+
+    if current_health >= 80:
+        status = "good"
+    elif current_health >= 55:
+        status = "fair"
+    else:
+        status = "poor"
+
+    # Battery age
+    replaced_date = settings.get("battery_replaced_date", "").strip()
+    age_days      = None
+    if replaced_date:
+        try:
+            rd       = date.fromisoformat(replaced_date)
+            age_days = (date.today() - rd).days
+        except ValueError:
+            pass
+
+    return {
+        "status":           status,
+        "health_pct":       current_health,
+        "current_avg_v":    current_avg_v,
+        "rated_v":          rated_v,
+        "warn_v":           warn_v,
+        "replace_v":        replace_v,
+        "monthly_trend":    trend,
+        "battery_age_days": age_days,
+        "replaced_date":    replaced_date,
+    }
+
+
 # ══════════════════════════════════════════════════════
 #  VIEWPOWER CLIENT
 # ══════════════════════════════════════════════════════
@@ -988,6 +1094,27 @@ def db_write_loop():
             if connected:
                 save_reading(snap)
                 log.debug(f"DB write: {snap['watts']}W bat:{snap['battery_capacity']}%")
+
+                # ── Battery health notification (once per degradation event) ──
+                try:
+                    h = get_battery_health()
+                    if h.get("status") == "poor" and not settings.get("health_alert_sent", False):
+                        settings["health_alert_sent"] = True
+                        save_settings(settings)
+                        pct = h.get("health_pct", 0)
+                        threading.Thread(
+                            target=notify,
+                            args=("🔋 Battery Health Warning!",
+                                  f"Your UPS battery health is LOW ({pct:.0f}%). "
+                                  "Consider replacing the battery soon to avoid data loss during outages.",
+                                  "warning"),
+                            daemon=True).start()
+                    elif h.get("status") in ("good", "fair") and settings.get("health_alert_sent", False):
+                        # Health improved (e.g. after a battery replacement) — reset flag
+                        settings["health_alert_sent"] = False
+                        save_settings(settings)
+                except Exception as he:
+                    log.debug(f"Health check error: {he}")
         except Exception as e:
             log.error(f"DB write error: {e}")
 
@@ -1072,6 +1199,18 @@ def api_settings():
         _safe_int("auto_shutdown_pct",       lo=5,    hi=99)
         _safe_int("auto_shutdown_mins",      lo=0,    hi=1440)
         _safe_int("billing_days",            lo=28,   hi=35)
+        if "battery_replaced_date" in body:
+            rdate = str(body["battery_replaced_date"]).strip()
+            if rdate:
+                try:
+                    date.fromisoformat(rdate)
+                    settings["battery_replaced_date"] = rdate
+                    settings["health_alert_sent"] = False
+                except ValueError:
+                    log.warning(f"Settings POST: battery_replaced_date={rdate!r} invalid, ignored.")
+            else:
+                settings["battery_replaced_date"] = ""
+            del body["battery_replaced_date"]
 
         settings.update(body)
         if "autostart" in body:
@@ -1155,6 +1294,33 @@ def api_trends():
 @flask_app.route("/api/outages")
 def api_outages():
     return jsonify(get_outages())
+
+
+@flask_app.route("/api/battery_health")
+def api_battery_health():
+    """Return battery health assessment based on historical voltage data."""
+    return jsonify(get_battery_health())
+
+
+@flask_app.route("/api/battery_health/set_replaced", methods=["POST"])
+def api_set_battery_replaced():
+    """Record the date the battery was last replaced."""
+    global settings
+    body = request.get_json(force=True)
+    replaced = body.get("replaced_date", "").strip()
+    if replaced:
+        try:
+            date.fromisoformat(replaced)   # validate format
+            settings["battery_replaced_date"] = replaced
+            settings["health_alert_sent"]     = False   # reset alert
+            save_settings(settings)
+            log.info(f"Battery replaced date set to {replaced}")
+        except ValueError:
+            return jsonify({"ok": False, "error": "Invalid date format"}), 400
+    else:
+        settings["battery_replaced_date"] = ""
+        save_settings(settings)
+    return jsonify({"ok": True, "replaced_date": settings["battery_replaced_date"]})
 
 
 @flask_app.route("/api/export")

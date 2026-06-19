@@ -70,6 +70,7 @@ async function loadSettings() {
     document.getElementById('s-notifications').checked = settings.notifications_enabled !== false;
     document.getElementById('s-ntfy').value = settings.ntfy_topic || '';
     document.getElementById('s-autostart').checked = !!settings.autostart;
+    document.getElementById('s-battery-replaced').value = settings.battery_replaced_date || '';
     
     onModelChange();
     
@@ -133,6 +134,7 @@ async function saveSettings() {
     notifications_enabled: document.getElementById('s-notifications').checked,
     ntfy_topic:            document.getElementById('s-ntfy').value.trim(),
     autostart:             document.getElementById('s-autostart').checked,
+    battery_replaced_date: document.getElementById('s-battery-replaced').value,
   };
 
   try {
@@ -289,14 +291,16 @@ async function loadAnalytics() {
   document.getElementById('month-label').innerText = currentMonth;
   
   try {
-    const [monthRes, trendRes, outageRes] = await Promise.all([
+    const [monthRes, trendRes, outageRes, healthRes] = await Promise.all([
       fetch(`/api/monthly?month=${currentMonth}`),
       fetch('/api/trends?days=30'),
-      fetch('/api/outages')
+      fetch('/api/outages'),
+      fetch('/api/battery_health')
     ]);
     const mData = await monthRes.json();
     const tData = await trendRes.json();
     const oData = await outageRes.json();
+    const hData = await healthRes.json();
     
     // Monthly stats
     const tKwh = mData.reduce((s, d) => s + d.kwh, 0);
@@ -347,6 +351,76 @@ async function loadAnalytics() {
   
   // Load bill estimator
   loadBillEstimate();
+  
+  // Update Battery Health UI
+  updateBatteryHealthUI(hData);
+}
+
+function updateBatteryHealthUI(h) {
+  const pctEl = document.getElementById('bh-pct');
+  const badgeEl = document.getElementById('bh-status-badge');
+  const avgVEl = document.getElementById('bh-avg-v');
+  const ageEl = document.getElementById('bh-age');
+  const pickerEl = document.getElementById('bh-date-picker');
+
+  if (!h || h.status === 'no_data' || h.health_pct === null) {
+    pctEl.innerText = '—%';
+    badgeEl.className = 'bh-status-badge bh-status-nodata';
+    badgeEl.innerText = 'No Data';
+    avgVEl.innerText = '—';
+    ageEl.innerText = '—';
+    if (pickerEl) pickerEl.value = h ? h.replaced_date : '';
+    return;
+  }
+
+  pctEl.innerText = h.health_pct.toFixed(1) + '%';
+  avgVEl.innerText = h.current_avg_v.toFixed(1) + ' V';
+  
+  if (h.battery_age_days !== null) {
+    ageEl.innerText = h.battery_age_days + ' days';
+  } else {
+    ageEl.innerText = 'Unknown age';
+  }
+
+  badgeEl.className = 'bh-status-badge bh-status-' + h.status;
+  badgeEl.innerText = h.status.toUpperCase();
+
+  if (pickerEl) {
+    pickerEl.value = h.replaced_date || '';
+  }
+}
+
+async function saveBatteryReplacedDate() {
+  const picker = document.getElementById('bh-date-picker');
+  const btn = document.getElementById('bh-save-btn');
+  const dateVal = picker.value;
+
+  btn.disabled = true;
+  btn.innerText = 'Saving...';
+
+  try {
+    const res = await fetch('/api/battery_health/set_replaced', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ replaced_date: dateVal })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Reload analytics to recalculate age & health
+      loadAnalytics();
+      // Also sync settings page input if it exists
+      const sInput = document.getElementById('s-battery-replaced');
+      if (sInput) sInput.value = dateVal;
+    } else {
+      alert('Error: ' + data.error);
+    }
+  } catch (err) {
+    console.error('Failed to save replacement date:', err);
+    alert('Failed to save date.');
+  } finally {
+    btn.disabled = false;
+    btn.innerText = 'Save';
+  }
 }
 
 function changeMonth(delta) {
