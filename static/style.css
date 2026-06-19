@@ -385,9 +385,22 @@ body {
 
 /* Outage table */
 .outage-count-badge { background: rgba(255,82,82,0.15); color: var(--danger); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; border: 1px solid rgba(255,82,82,0.3); }
-.outage-table-wrap { overflow-x: auto; }
+.outage-table-wrap {
+  overflow: auto;
+  max-height: 250px;
+}
 .outage-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left; }
-.outage-table th { color: var(--text-muted); text-transform: uppercase; font-weight: 600; padding: 12px; border-bottom: 1px solid var(--card-border); }
+.outage-table th {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 12px;
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  background: #111522;
+  z-index: 1;
+}
 .outage-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.03); color: var(--text); }
 .outage-table tr:hover td { background: rgba(255,255,255,0.02); }
 .outage-table .no-data { text-align: center; color: var(--text-dim); padding: 24px; }
