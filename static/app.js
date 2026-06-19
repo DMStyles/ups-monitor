@@ -247,6 +247,7 @@ async function pollStatus() {
     
     // Battery alert & runtime
     if (d.on_battery) {
+      document.body.classList.add('on-battery-theme');
       document.getElementById('battery-alert').style.display = 'flex';
       if (d.runtime_estimate !== null) {
         document.getElementById('runtime-badge').style.display = 'flex';
@@ -255,6 +256,7 @@ async function pollStatus() {
         document.getElementById('runtime-badge').style.display = 'none';
       }
     } else {
+      document.body.classList.remove('on-battery-theme');
       document.getElementById('battery-alert').style.display = 'none';
       document.getElementById('runtime-badge').style.display = 'none';
     }
