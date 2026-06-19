@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo  UPS Power Monitor - Build Release v1.4.0
+echo  UPS Power Monitor - Build Release v1.4.2
 echo ============================================
 
 REM --- Check Python ---
@@ -66,8 +66,8 @@ goto :done
 :release_zip
 echo [4/4] Creating ZIP release instead...
 mkdir release 2>nul
-powershell -Command "Compress-Archive -Path 'dist\UPS Power Monitor\*' -DestinationPath 'release\UPS-Power-Monitor-v1.4.0-portable.zip' -Force"
-echo ZIP created: release\UPS-Power-Monitor-v1.4.0-portable.zip
+powershell -Command "Compress-Archive -Path 'dist\UPS Power Monitor\*' -DestinationPath 'release\UPS-Power-Monitor-v1.4.2-portable.zip' -Force"
+echo ZIP created: release\UPS-Power-Monitor-v1.4.2-portable.zip
 
 :done
 echo.

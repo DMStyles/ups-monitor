@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.4.0"
+VERSION = "v1.4.2"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1590,7 +1590,7 @@ def main():
     if sys.platform == "win32":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DMStyles.UPSPowerMonitor.v1.4")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DMStyles.UPSPowerMonitor.v1.4.2")
         except Exception as e:
             log.warning(f"Could not set AppUserModelID: {e}")
             
