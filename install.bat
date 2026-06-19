@@ -120,7 +120,7 @@ if not exist "%PYTHONW_EXE%" (
 
 :: Create Desktop Shortcut
 echo Creating Desktop Shortcut...
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Desktop = $WshShell.SpecialFolders.Item('Desktop'); $Shortcut = $WshShell.CreateShortcut(\"$Desktop\UPS Power Monitor.lnk\"); $Shortcut.TargetPath = '%~dp0start_ups_monitor.bat'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0static\favicon.ico'; $Shortcut.Save()"
+powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Desktop = $WshShell.SpecialFolders.Item('Desktop'); $Shortcut = $WshShell.CreateShortcut(\"$Desktop\UPS Power Monitor.lnk\"); $Shortcut.TargetPath = '%PYTHONW_EXE%'; $Shortcut.Arguments = '\"%~dp0ups_monitor.py\"'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0static\favicon.ico'; $Shortcut.Save()"
 
 :: Configure Windows Startup task (runs minimized 30s after logon)
 echo Configuring Windows Autostart task...

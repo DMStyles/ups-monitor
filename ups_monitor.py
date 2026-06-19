@@ -1580,6 +1580,14 @@ def main():
     global _app_mutex
     _app_mutex = check_single_instance()
     
+    # Set AppUserModelID on Windows so taskbar groups properly and shows custom icon
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DMStyles.UPSPowerMonitor.v1.4")
+        except Exception as e:
+            log.warning(f"Could not set AppUserModelID: {e}")
+            
     log.info("=" * 60)
     log.info(f"UPS Power Monitor {VERSION} starting…")
     init_db()
@@ -1600,7 +1608,32 @@ def main():
         hidden="--minimized" in sys.argv,
     )
     window.events.closing += on_closing
-    webview.start()
+
+    def set_native_icon():
+        if sys.platform == "win32":
+            try:
+                icon_path = str(BASE_DIR / "static" / "favicon.ico")
+                if not os.path.exists(icon_path):
+                    return
+                
+                import clr
+                native_type = type(window.native).__name__
+                if "Form" in native_type:  # WinForms Form
+                    clr.AddReference('System.Drawing')
+                    from System.Drawing import Icon
+                    window.native.Icon = Icon(icon_path)
+                    log.info("Set native WinForms window icon successfully")
+                elif "Window" in native_type:  # WPF Window
+                    clr.AddReference('System.Windows.Presentation')
+                    clr.AddReference('PresentationCore')
+                    from System.Windows.Media.Imaging import BitmapFrame
+                    from System import Uri
+                    window.native.Icon = BitmapFrame.Create(Uri(icon_path))
+                    log.info("Set native WPF window icon successfully")
+            except Exception as e:
+                log.warning(f"Could not set native window icon: {e}")
+
+    webview.start(set_native_icon)
 
 
 if __name__ == "__main__":
