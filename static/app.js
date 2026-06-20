@@ -56,7 +56,6 @@ async function loadSettings() {
     
     // Fill form
     select.value = settings.ups_model || mData.models[0];
-    document.getElementById('s-rate').value = settings.elec_rate || 30.0;
     document.getElementById('s-low-bat').value = settings.low_battery_threshold || 20;
     
     document.getElementById('s-auto-shutdown').checked = !!settings.auto_shutdown_enabled;
@@ -106,14 +105,12 @@ function onModelChange() {
 
 async function saveSettings() {
   // ── Validate numeric fields before building payload ──────
-  const rateRaw   = parseFloat(document.getElementById('s-rate').value);
   const lowBatRaw = parseInt(document.getElementById('s-low-bat').value);
   const sdPctRaw  = parseInt(document.getElementById('s-shutdown-pct').value);
   const sdMinsRaw = parseInt(document.getElementById('s-shutdown-mins').value);
   const bdaysRaw  = parseInt(document.getElementById('s-billing-days').value);
 
   const errors = [];
-  if (isNaN(rateRaw)   || rateRaw < 0)            errors.push('Electricity Rate must be a positive number.');
   if (isNaN(lowBatRaw) || lowBatRaw < 5 || lowBatRaw > 50)  errors.push('Low Battery Threshold must be between 5 and 50%.');
   if (isNaN(sdPctRaw)  || sdPctRaw < 5 || sdPctRaw > 99)    errors.push('Shutdown battery % must be between 5 and 99.');
   if (isNaN(sdMinsRaw) || sdMinsRaw < 0)          errors.push('Shutdown time (minutes) must be 0 or more.');
@@ -129,7 +126,6 @@ async function saveSettings() {
 
   const payload = {
     ups_model:             document.getElementById('s-model').value,
-    elec_rate:             rateRaw,
     low_battery_threshold: lowBatRaw,
     auto_shutdown_enabled: document.getElementById('s-auto-shutdown').checked,
     auto_shutdown_pct:     sdPctRaw,
