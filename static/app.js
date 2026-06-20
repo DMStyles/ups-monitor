@@ -314,15 +314,16 @@ async function loadAnalytics() {
     const hData = await healthRes.json();
     
     // Monthly stats
-    const tKwh = mData.reduce((s, d) => s + d.kwh, 0);
-    const tCost = mData.reduce((s, d) => s + d.cost_lkr, 0);
+    const dailyData = mData.daily;
+    const tKwh = dailyData.reduce((s, d) => s + d.kwh, 0);
+    const tCost = mData.ceb_accumulated;
     document.getElementById('m-total-kwh').innerText = tKwh.toFixed(2);
     document.getElementById('m-total-cost').innerText = tCost.toFixed(2);
-    document.getElementById('m-days').innerText = mData.filter(d => d.samples > 0).length;
-    document.getElementById('m-avg-daily').innerText = (tKwh / (mData.filter(d => d.samples > 0).length || 1)).toFixed(2);
+    document.getElementById('m-days').innerText = dailyData.filter(d => d.samples > 0).length;
+    document.getElementById('m-avg-daily').innerText = (tKwh / (dailyData.filter(d => d.samples > 0).length || 1)).toFixed(2);
     
-    monthlyChart.data.labels = mData.map(d => d.date.substring(5)); // MM-DD
-    monthlyChart.data.datasets[0].data = mData.map(d => d.kwh);
+    monthlyChart.data.labels = dailyData.map(d => d.date.substring(5)); // MM-DD
+    monthlyChart.data.datasets[0].data = dailyData.map(d => d.kwh);
     monthlyChart.update();
     
     // Trends

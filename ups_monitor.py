@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.4.2"
+VERSION = "v1.4.3"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -480,9 +480,13 @@ def get_daily_stats(target_date: str = None) -> dict:
             dt = min(dt, settings.get("db_write_interval", 60) * 1.5)
             kwh += (last_w / 1000.0) * (dt / 3600.0)
 
-        rate = settings.get("elec_rate", 30.0)
+        # Estimate CEB cost for today by projecting to 30 days
+        projected_monthly_kwh = kwh * 30.0
+        ceb_bill = calc_ceb_bill(projected_monthly_kwh)
+        daily_cost = ceb_bill["total"] / 30.0
+
         return {"date": target_date, "kwh": round(kwh, 4),
-                "cost_lkr": round(kwh * rate, 2), "samples": len(rows)}
+                "cost_lkr": round(daily_cost, 2), "samples": len(rows)}
     except Exception as e:
         log.error(f"Daily stats error: {e}")
         return {"date": target_date, "kwh": 0, "cost_lkr": 0, "samples": 0}
@@ -1296,7 +1300,13 @@ def api_daily():
 @flask_app.route("/api/monthly")
 def api_monthly():
     month = request.args.get("month", date.today().strftime("%Y-%m"))
-    return jsonify(get_monthly_data(month))
+    daily_data = get_monthly_data(month)
+    t_kwh = sum(d["kwh"] for d in daily_data)
+    ceb_accumulated = calc_ceb_bill(t_kwh)["total"]
+    return jsonify({
+        "daily": daily_data,
+        "ceb_accumulated": ceb_accumulated
+    })
 
 
 @flask_app.route("/api/bill_estimate")
