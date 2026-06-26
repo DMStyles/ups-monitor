@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.6.7"
+VERSION = "v1.6.8"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1073,13 +1073,11 @@ def fast_poll_loop():
                     ups_state["connected"] = False
                 # notify SSE subscribers of new data
                 state_updated.set()
-                state_updated.clear()
         except Exception as e:
             log.error(f"Fast poll error: {e}")
             with state_lock:
                 ups_state["connected"] = False
             state_updated.set()
-            state_updated.clear()
 
         time.sleep(max(1, settings.get("fast_poll_interval", 2)))
 
@@ -1204,6 +1202,7 @@ def api_stream():
         while True:
             # Block until the poll loop signals new data (with 5s timeout as keepalive)
             state_updated.wait(timeout=5)
+            state_updated.clear()  # reset so we block again next cycle
             try:
                 with state_lock:
                     s = dict(ups_state)
@@ -1596,7 +1595,7 @@ def api_show_window():
 
 def run_flask():
     log.info(f"Flask starting on :{DASHBOARD_PORT}")
-    flask_app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False, use_reloader=False)
+    flask_app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False, use_reloader=False, threaded=True)
 
 
 # ══════════════════════════════════════════════════════
