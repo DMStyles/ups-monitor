@@ -856,3 +856,7 @@ body.on-battery-theme .status-badge.status-connected .status-dot {
 }
 .qa-btn.mute-btn:hover { border-color: var(--accent2); color: var(--accent2); }
 .qa-btn.test-btn:hover { border-color: var(--warn); color: var(--warn); }
+.settings-input option {
+  background: var(--bg);
+  color: var(--text);
+}
