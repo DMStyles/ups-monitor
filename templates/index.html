@@ -181,6 +181,19 @@
           </div>
         </section>
 
+        <!-- QUICK ACTIONS -->
+        <section class="card quick-actions-card">
+          <h2 class="card-title">Quick Actions</h2>
+          <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap;">
+            <button class="settings-btn" onclick="sendUpsAction('mute')" style="flex:1; padding:12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;">
+              <span>🔕</span> Mute Alarm
+            </button>
+            <button class="settings-btn" onclick="sendUpsAction('test')" style="flex:1; padding:12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;">
+              <span>⚡</span> 10s Self-Test
+            </button>
+          </div>
+        </section>
+
         <!-- HOURLY CHART -->
         <section class="card chart-card">
           <div class="chart-header">
@@ -561,6 +574,13 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
+          </div>
+          <div class="setting-group" style="margin-top:10px;">
+            <label class="setting-label" for="s-auto-shutdown-action">Shutdown Action</label>
+            <select class="settings-input" id="s-auto-shutdown-action" style="width:100%; border:none; padding:10px; border-radius:6px; background:rgba(255,255,255,0.05); color:#fff;">
+              <option value="shutdown">Shut down PC</option>
+              <option value="hibernate">Hibernate PC</option>
+            </select>
           </div>
           <div class="setting-group" style="margin-top:10px;">
             <label class="setting-label" for="s-shutdown-pct">Shutdown if Battery drops below (%)</label>

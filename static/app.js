@@ -59,6 +59,7 @@ async function loadSettings() {
     document.getElementById('s-low-bat').value = settings.low_battery_threshold || 20;
     
     document.getElementById('s-auto-shutdown').checked = !!settings.auto_shutdown_enabled;
+    document.getElementById('s-auto-shutdown-action').value = settings.auto_shutdown_action || 'shutdown';
     document.getElementById('s-shutdown-pct').value = settings.auto_shutdown_pct || 10;
     document.getElementById('s-shutdown-mins').value = settings.auto_shutdown_mins || 5;
     
@@ -128,6 +129,7 @@ async function saveSettings() {
     ups_model:             document.getElementById('s-model').value,
     low_battery_threshold: lowBatRaw,
     auto_shutdown_enabled: document.getElementById('s-auto-shutdown').checked,
+    auto_shutdown_action:  document.getElementById('s-auto-shutdown-action').value,
     auto_shutdown_pct:     sdPctRaw,
     auto_shutdown_mins:    sdMinsRaw,
     billing_days:          isNaN(bdaysRaw) ? 30 : Math.max(28, Math.min(35, bdaysRaw)),
@@ -667,3 +669,19 @@ window.onload = () => {
   grad.appendChild(stop1); grad.appendChild(stop2); defs.appendChild(grad);
   document.querySelector('.gauge-svg').prepend(defs);
 };
+function sendUpsAction(action) {
+  fetch('/api/ups/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action })
+  })
+  .then(res => res.json())
+  .then(data => {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toast-msg');
+    toast.className = 'toast show ' + (data.status === 'ok' ? 'success' : 'error');
+    toastMsg.innerText = data.message;
+    setTimeout(() => { toast.classList.remove('show'); }, 3000);
+  })
+  .catch(err => console.error('UPS Action error:', err));
+}

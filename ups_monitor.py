@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.5.2"
+VERSION = "v1.6.0"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -89,6 +89,7 @@ DEFAULT_SETTINGS = {
     "low_battery_threshold": 20,
     "ntfy_topic":            "",
     "auto_shutdown_enabled": False,
+    "auto_shutdown_action":  "shutdown",
     "auto_shutdown_pct":     10,
     "auto_shutdown_mins":    5,
     # CEB billing settings
@@ -835,6 +836,21 @@ class DirectUPSClient:
             log.error(f"DirectUPS HID fetch failed: {e}")
             return None
 
+    def send_command(self, cmd_str: str) -> bool:
+        """Sends a raw command (like 'Q' or 'T') to the UPS."""
+        try:
+            dev = hid.device()
+            dev.open(self.VID, self.PID)
+            dev.set_nonblocking(False)
+            cmd = cmd_str.encode('ascii') + b'\r'
+            packet = b'\x00' + cmd + b'\x00' * (8 - len(cmd))
+            dev.write(packet)
+            dev.close()
+            return True
+        except Exception as e:
+            log.error(f"Failed to send UPS command '{cmd_str}': {e}")
+            return False
+
     def _parse_q1(self, raw: bytes) -> dict | None:
         """Parse a Voltronic Q1 response string.
         Format: (BBB.B CCC.C DDD.D EEE FF.F GG.G HHH.H IIIIIIII<CR>
@@ -945,7 +961,8 @@ def fast_poll_loop():
                         # Abort shutdown if one was pending
                         if _shutdown_triggered:
                             _shutdown_triggered = False
-                            subprocess.Popen("shutdown /a", shell=True)
+                            if settings.get("auto_shutdown_action", "shutdown") == "shutdown":
+                                subprocess.Popen("shutdown /a", shell=True)
                             threading.Thread(
                                 target=notify,
                                 args=("🛑 Shutdown Aborted", "Power was restored! System shutdown has been cancelled.", "success"),
@@ -978,13 +995,24 @@ def fast_poll_loop():
                         if trigger_shutdown:
                             _shutdown_triggered = True
                             log.warning(f"AUTO-SHUTDOWN TRIGGERED: {reason}")
+                            action = settings.get("auto_shutdown_action", "shutdown")
+                            action_text = "hibernate" if action == "hibernate" else "shut down"
+                            
                             threading.Thread(
                                 target=notify,
                                 args=("⚠️ AUTO-SHUTDOWN INITIATED",
-                                      f"{reason}. Windows will shut down in 60 seconds. Save your work immediately!",
+                                      f"{reason}. Windows will {action_text} in 60 seconds. Save your work immediately!",
                                       "danger"),
                                 daemon=True).start()
-                            subprocess.Popen(f'shutdown /s /t 60 /c "UPS Auto-Shutdown: {reason}"', shell=True)
+                                
+                            if action == "hibernate":
+                                def execute_hibernate():
+                                    if _shutdown_triggered:
+                                        log.warning("Executing hibernation...")
+                                        subprocess.Popen("shutdown /h", shell=True)
+                                threading.Timer(60.0, execute_hibernate).start()
+                            else:
+                                subprocess.Popen(f'shutdown /s /t 60 /c "UPS Auto-Shutdown: {reason}"', shell=True)
 
                     # ── High Load Warning (during outage) ─────
                     if on_bat:
@@ -1176,6 +1204,11 @@ def api_settings():
         _safe_int("low_battery_threshold",   lo=5,    hi=50)
         _safe_int("fast_poll_interval",      lo=1,    hi=60)
         _safe_int("db_write_interval",       lo=30,   hi=600)
+        
+        # Shutdown action can be 'shutdown' or 'hibernate'
+        if "auto_shutdown_action" in body and body["auto_shutdown_action"] in ("shutdown", "hibernate"):
+            settings["auto_shutdown_action"] = body["auto_shutdown_action"]
+            
         _safe_int("auto_shutdown_pct",       lo=5,    hi=99)
         _safe_int("auto_shutdown_mins",      lo=0,    hi=1440)
         _safe_int("billing_days",            lo=28,   hi=35)
@@ -1405,6 +1438,25 @@ def check_update():
     except Exception as e:
         log.error(f"Update check error: {e}")
     return jsonify({"update_available": False, "current_version": VERSION})
+
+
+@flask_app.route("/api/ups/action", methods=["POST"])
+def api_ups_action():
+    try:
+        body = request.json or {}
+        action = body.get("action")
+        if action == "mute":
+            # Toggle beep
+            success = ups_client.send_command("Q")
+            return jsonify({"status": "ok" if success else "error", "message": "Mute toggle sent" if success else "Failed to send command"})
+        elif action == "test":
+            # 10s battery test
+            success = ups_client.send_command("T")
+            return jsonify({"status": "ok" if success else "error", "message": "10s test started" if success else "Failed to send command"})
+        else:
+            return jsonify({"status": "error", "message": "Unknown action"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @flask_app.route("/api/perform_update", methods=["POST"])
