@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.4.4"
+VERSION = "v1.4.5"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -362,6 +362,13 @@ def init_db():
         duration_seconds  INTEGER,
         battery_at_start  INTEGER,
         battery_at_end    INTEGER
+    )""")
+    
+    c.execute("""CREATE TABLE IF NOT EXISTS ceb_bills (
+        month             TEXT PRIMARY KEY,
+        amount_lkr        REAL NOT NULL,
+        calculated_kwh    REAL NOT NULL,
+        ups_kwh           REAL NOT NULL
     )""")
     # Migrations — safe to run every time
     for col_def in ["temperature REAL"]:
@@ -1186,6 +1193,20 @@ flask_app.config["SECRET_KEY"] = "ups-monitor-key-2024"
 def index():
     return render_template("index.html")
 
+def reverse_ceb_bill(target_lkr: float) -> float:
+    """Reverse calculate the kWh consumption given a target LKR bill amount using binary search."""
+    if target_lkr <= 0:
+        return 0.0
+    low, high = 0.0, 5000.0
+    for _ in range(50):
+        mid = (low + high) / 2
+        bill = calc_ceb_bill(mid)["total"]
+        if bill < target_lkr:
+            low = mid
+        else:
+            high = mid
+    return round(mid, 2)
+
 
 @flask_app.route("/favicon.ico")
 def favicon():
@@ -1337,6 +1358,28 @@ def api_bill_estimate():
     bill      = calc_ceb_bill(projected_kwh)
     daily_est = calc_ceb_bill(daily_avg_kwh)
 
+    # ────────────────────────────────────────────────────────
+    # Household Prediction Logic
+    # ────────────────────────────────────────────────────────
+    household_prediction = None
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute("SELECT amount_lkr, calculated_kwh, ups_kwh FROM ceb_bills")
+        past_bills = c.fetchall()
+        
+    if past_bills:
+        total_base_load = 0.0
+        for b in past_bills:
+            base = max(0.0, b[1] - b[2]) # calculated_kwh - ups_kwh
+            total_base_load += base
+        avg_base_load = total_base_load / len(past_bills)
+        predicted_total_kwh = avg_base_load + projected_kwh
+        household_prediction = {
+            "avg_base_load_kwh": round(avg_base_load, 2),
+            "predicted_total_kwh": round(predicted_total_kwh, 2),
+            "predicted_bill": calc_ceb_bill(predicted_total_kwh)
+        }
+
     return jsonify({
         "month":           month,
         "recorded_kwh":    round(recorded_kwh, 3),
@@ -1346,7 +1389,38 @@ def api_bill_estimate():
         "daily_avg_kwh":   round(daily_avg_kwh, 4),
         "monthly_bill":    bill,
         "daily_cost":      daily_est,
+        "household":       household_prediction
     })
+
+@flask_app.route("/api/actual_bill", methods=["POST"])
+def api_actual_bill():
+    body = request.get_json(force=True)
+    month = body.get("month")
+    amount = body.get("amount")
+    if not month or amount is None:
+        return jsonify({"error": "Missing month or amount"}), 400
+    
+    amount = float(amount)
+    
+    # Get the UPS recorded kWh for that month
+    daily_data = get_monthly_data(month)
+    ups_kwh = sum(d["kwh"] for d in daily_data)
+    
+    calculated_kwh = reverse_ceb_bill(amount)
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO ceb_bills (month, amount_lkr, calculated_kwh, ups_kwh) 
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(month) DO UPDATE SET 
+                amount_lkr = excluded.amount_lkr,
+                calculated_kwh = excluded.calculated_kwh,
+                ups_kwh = excluded.ups_kwh
+        ''', (month, amount, calculated_kwh, ups_kwh))
+        conn.commit()
+        
+    return jsonify({"ok": True, "calculated_kwh": calculated_kwh, "ups_kwh": ups_kwh})
 
 
 @flask_app.route("/api/trends")
