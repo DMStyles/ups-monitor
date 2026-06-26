@@ -11,6 +11,7 @@ import json
 import re
 import time
 import sqlite3
+import requests
 import logging
 import threading
 import subprocess
@@ -27,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.5.0"
+VERSION = "v1.5.1"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -812,8 +813,8 @@ class DirectUPSClient:
             dev.open(self.VID, self.PID)
             dev.set_nonblocking(False)
 
-            # Send Q1 command (status query)
-            cmd = b'Q1\r'
+            # Send QS command (status query)
+            cmd = b'QS\r'
             packet = b'\x00' + cmd + b'\x00' * (8 - len(cmd))
             dev.write(packet)
 
@@ -823,13 +824,15 @@ class DirectUPSClient:
                 chunk = dev.read(8, timeout_ms=200)
                 if chunk:
                     raw += bytes(chunk)
-                    if b'\r' in raw and raw.lstrip(b'\x00 ').startswith(b'('):
-                        break
+                    if b'\r' in raw and b'(' in raw:
+                        # Ensure the \r comes after the (
+                        if raw.find(b'\r', raw.find(b'(')) != -1:
+                            break
 
             dev.close()
             return self._parse_q1(raw)
         except Exception as e:
-            log.debug(f"DirectUPS HID fetch failed: {e}")
+            log.error(f"DirectUPS HID fetch failed: {e}")
             return None
 
     def _parse_q1(self, raw: bytes) -> dict | None:
@@ -1534,7 +1537,7 @@ def create_tray():
                 status = f"🔋 Battery (~{rt} min left)" if on_bat and rt else "✅ Line"
                 icon.title = f"⚡ UPS — {w:.0f} W  |  {status}  |  Bat:{bat}%"
             else:
-                icon.title = "⚡ UPS Monitor — Waiting for ViewPower…"
+                icon.title = "⚡ UPS Monitor — Connecting to UPS via USB…"
             time.sleep(5)
 
     threading.Thread(target=update_loop, daemon=True).start()

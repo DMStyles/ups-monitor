@@ -210,7 +210,7 @@ async function pollStatus() {
     if (!d.connected) {
       document.getElementById('status-badge').className = 'status-badge status-disconnected';
       document.getElementById('status-text').innerText = 'Disconnected';
-      document.getElementById('last-update').innerText = d.last_update ? 'Last seen ' + d.last_update.substring(11,19) : 'Waiting for ViewPower…';
+      document.getElementById('last-update').innerText = d.last_update ? 'Last seen ' + d.last_update.substring(11,19) : 'Waiting for UPS...';
       return;
     }
 
