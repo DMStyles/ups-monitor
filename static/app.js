@@ -32,34 +32,8 @@ async function initDashboard() {
   pollStatus();         // one immediate fetch on load
   loadWeekData();
   
-  // ── Real-time Server-Sent Events ────────────────────────
-  let sseActive = false;
-  function startSSE() {
-    const es = new EventSource('/api/stream');
-    es.onopen = () => {
-      sseActive = true;
-      // clear the fallback timer if SSE connects successfully
-      if (window._pollTimer) { clearInterval(window._pollTimer); window._pollTimer = null; }
-    };
-    es.onmessage = (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        if (d && Object.keys(d).length > 0) applyStatus(d);
-      } catch (_) {}
-    };
-    es.onerror = () => {
-      es.close();
-      sseActive = false;
-      // Fall back to polling every 2s until SSE recovers
-      if (!window._pollTimer) {
-        window._pollTimer = setInterval(pollStatus, fastPollInterval);
-      }
-      // Retry SSE after 5s
-      setTimeout(startSSE, 5000);
-    };
-  }
-  startSSE();
-
+  // Poll every fastPollInterval (default 2s)
+  setInterval(pollStatus, fastPollInterval);
   // week data refreshes every 5 mins
   setInterval(loadWeekData, 300000);
 }
