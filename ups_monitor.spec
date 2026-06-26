@@ -13,7 +13,10 @@ SRC = Path(".")
 a = Analysis(
     [str(SRC / "ups_monitor.py")],
     pathex=[str(SRC)],
-    binaries=[],
+    binaries=[
+        # Include the hidapi compiled extension directly
+        (r"C:\Users\dilsh\AppData\Local\Programs\Python\Python312\Lib\site-packages\hid.cp312-win_amd64.pyd", "."),
+    ],
     datas=[
         # Include HTML templates and static assets
         (str(SRC / "templates"), "templates"),
@@ -28,7 +31,6 @@ a = Analysis(
         "werkzeug.serving",
         # HID (direct USB)
         "hid",
-        "hidapi",
         # Image
         "PIL",
         "PIL.Image",
