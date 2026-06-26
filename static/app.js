@@ -473,53 +473,8 @@ async function loadBillEstimate() {
     document.getElementById('bill-fixed').innerText = 'LKR ' + bill.fixed_charge.toLocaleString('en-LK', {minimumFractionDigits: 2});
     document.getElementById('bill-sscl').innerText = 'LKR ' + bill.sscl_tax.toLocaleString('en-LK', {minimumFractionDigits: 2});
     document.getElementById('bill-grand-total').innerText = 'LKR ' + bill.total.toLocaleString('en-LK', {minimumFractionDigits: 2});
-
-    // Household Prediction
-    if (data.household) {
-      document.getElementById('household-prediction-row').style.display = 'flex';
-      document.getElementById('hp-base-kwh').innerText = data.household.avg_base_load_kwh.toFixed(2);
-      document.getElementById('hp-total-kwh').innerText = data.household.predicted_total_kwh.toFixed(2);
-      document.getElementById('hp-total-bill').innerText = 'LKR ' + data.household.predicted_bill.total.toLocaleString('en-LK', {minimumFractionDigits: 2});
-    } else {
-      document.getElementById('household-prediction-row').style.display = 'none';
-    }
-
   } catch (e) {
     console.error('Bill estimate error:', e);
-  }
-}
-
-async function submitActualBill() {
-  const month = document.getElementById('hp-actual-month').value;
-  const amount = document.getElementById('hp-actual-amount').value;
-  const status = document.getElementById('hp-submit-status');
-  
-  if (!month || !amount) {
-    status.style.color = '#ef4444';
-    status.innerText = 'Please select a month and enter an amount.';
-    return;
-  }
-  
-  status.style.color = '#3b82f6';
-  status.innerText = 'Saving...';
-  
-  try {
-    const res = await fetch('/api/actual_bill', {
-      method: 'POST',
-      body: JSON.stringify({ month, amount })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      status.style.color = '#10b981';
-      status.innerText = 'Saved! (' + data.calculated_kwh.toFixed(1) + ' kWh used)';
-      loadBillEstimate(); // reload to show new predictions
-    } else {
-      status.style.color = '#ef4444';
-      status.innerText = 'Failed: ' + data.error;
-    }
-  } catch (e) {
-    status.style.color = '#ef4444';
-    status.innerText = 'Network error.';
   }
 }
 

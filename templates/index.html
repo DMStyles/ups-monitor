@@ -464,54 +464,6 @@
           Based on CEB Domestic Tariff D-2026/05 (May 2026). Actual bill may vary. Includes SSCL levy.
         </p>
       </section>
-      
-      <!-- Household Prediction -->
-      <section class="card analytics-section" id="household-predictor-section" style="margin-top:20px;">
-        <div class="analytics-header">
-          <h2 class="card-title" style="margin-bottom:0;">🏠 Household Bill Predictor</h2>
-        </div>
-        <p style="font-size:0.78rem; color:var(--text-dim); margin-top:4px; margin-bottom:16px;">
-          Enter your actual CEB bill amount for previous months. The app will learn your house's baseline usage and predict your full electricity bill!
-        </p>
-        
-        <div class="bill-summary-row" id="household-prediction-row" style="display:none; margin-bottom: 20px;">
-          <div class="bill-summary-card bill-card-blue">
-            <div class="bill-card-icon">⚡</div>
-            <div class="bill-card-body">
-              <div class="bill-card-val" id="hp-base-kwh">-</div>
-              <div class="bill-card-label">Learned Base Load (kWh)</div>
-            </div>
-          </div>
-          <div class="bill-summary-card bill-card-green">
-            <div class="bill-card-icon">📈</div>
-            <div class="bill-card-body">
-              <div class="bill-card-val" id="hp-total-kwh">-</div>
-              <div class="bill-card-label">Est. Total House (kWh)</div>
-            </div>
-          </div>
-          <div class="bill-summary-card bill-card-gold">
-            <div class="bill-card-icon">🧾</div>
-            <div class="bill-card-body">
-              <div class="bill-card-val" id="hp-total-bill">-</div>
-              <div class="bill-card-label">Est. Total House Bill</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="bill-breakdown">
-          <div class="bill-section-title">Record Actual Bill</div>
-          <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
-            <label style="color:var(--text-dim); font-size:0.85rem;">Month:</label>
-            <input type="month" id="hp-actual-month" class="setting-input" style="width: auto; padding: 4px 8px;" />
-            
-            <label style="color:var(--text-dim); font-size:0.85rem;">Total LKR:</label>
-            <input type="number" id="hp-actual-amount" class="setting-input" placeholder="e.g. 4500" style="width: 120px; padding: 4px 8px;" step="0.01" />
-            
-            <button class="btn btn-primary" onclick="submitActualBill()" style="padding: 6px 12px; font-size: 0.85rem;" id="hp-submit-btn">Save</button>
-            <span id="hp-submit-status" style="font-size: 0.85rem; color: #10b981; margin-left: 10px;"></span>
-          </div>
-        </div>
-      </section>
 
     </div><!-- /tab-analytics -->
 

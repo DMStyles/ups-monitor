@@ -1,6 +1,6 @@
 """
-UPS Power Monitor v1.4.0
-Standalone Windows desktop app — monitors UPS via ViewPower.
+UPS Power Monitor v1.5.0
+Standalone Windows desktop app — monitors UPS directly via USB HID (Megatec/Voltronic protocol).
 Features: real-time dashboard, analytics, battery health tracker, on-battery warning theme,
           dynamic CEB bill estimator (D-2026/05 tariff), outage log, auto-updater, tray icon.
 """
@@ -19,8 +19,7 @@ from datetime import datetime, date, timedelta
 from io import StringIO
 from pathlib import Path
 
-import requests
-from bs4 import BeautifulSoup
+import hid
 from flask import Flask, jsonify, render_template, request, Response
 from PIL import Image, ImageDraw
 import pystray
@@ -28,7 +27,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.4.5"
+VERSION = "v1.5.0"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -132,7 +131,8 @@ def get_model_cfg() -> dict:
 # ══════════════════════════════════════════════════════
 #  CONSTANTS
 # ══════════════════════════════════════════════════════
-VIEWPOWER_BASE  = "http://localhost:15178/ViewPower"
+UPS_VID          = 0x0665
+UPS_PID          = 0x5161
 DASHBOARD_PORT  = 8765
 DASHBOARD_URL   = f"http://localhost:{DASHBOARD_PORT}"
 MAX_READING_GAP = 300   # seconds — gaps > this = PC/app was off, skip for energy calc
@@ -797,210 +797,108 @@ def get_battery_health() -> dict:
 # ══════════════════════════════════════════════════════
 #  VIEWPOWER CLIENT
 # ══════════════════════════════════════════════════════
-class ViewPowerClient:
-    HEADERS = {"Accept": "application/json, text/html, */*",
-               "User-Agent": "UPSMonitor/1.1"}
-    TIMEOUT = 5
+class DirectUPSClient:
+    """Reads UPS data directly via USB HID using the Megatec/Voltronic QS protocol.
+    Vendor ID 0x0665 / Product ID 0x5161 is the Cypress USB bridge used by many
+    Voltronic / ViewPower compatible UPS devices.
+    """
 
-    def __init__(self, base_url: str = VIEWPOWER_BASE):
-        self.base_url   = base_url.rstrip("/")
-        self.session    = requests.Session()
-        self.session.headers.update(self.HEADERS)
-        self._device_id = None
+    VID = UPS_VID
+    PID = UPS_PID
 
     def fetch(self) -> dict | None:
-        for strategy in (self._try_req_monitor_data,
-                          self._try_load_info_action,
-                          self._try_device_summary_action,
-                          self._try_html_monitor):
-            data = strategy()
-            if data:
-                return data
-        return None
-
-    def _try_req_monitor_data(self) -> dict | None:
         try:
-            r = self.session.get(f"{self.base_url}/monitor", timeout=self.TIMEOUT)
-            if r.status_code != 200:
+            dev = hid.device()
+            dev.open(self.VID, self.PID)
+            dev.set_nonblocking(False)
+
+            # Send Q1 command (status query)
+            cmd = b'Q1\r'
+            packet = b'\x00' + cmd + b'\x00' * (8 - len(cmd))
+            dev.write(packet)
+
+            # Read response (may come in multiple 8-byte chunks)
+            raw = b''
+            for _ in range(40):
+                chunk = dev.read(8, timeout_ms=200)
+                if chunk:
+                    raw += bytes(chunk)
+                    if b'\r' in raw and raw.lstrip(b'\x00 ').startswith(b'('):
+                        break
+
+            dev.close()
+            return self._parse_q1(raw)
+        except Exception as e:
+            log.debug(f"DirectUPS HID fetch failed: {e}")
+            return None
+
+    def _parse_q1(self, raw: bytes) -> dict | None:
+        """Parse a Voltronic Q1 response string.
+        Format: (BBB.B CCC.C DDD.D EEE FF.F GG.G HHH.H IIIIIIII<CR>
+          B = Input voltage
+          C = Input fault voltage
+          D = Output voltage
+          E = Output current percent
+          F = Output frequency
+          G = Battery voltage
+          H = Temperature (or --.- if not available)
+          I = Status bits (8 chars)
+        """
+        try:
+            # Strip nulls and find the '(' response
+            text = raw.replace(b'\x00', b'').decode('ascii', errors='ignore')
+            m = re.search(r'\(([\d. -]+[01]{8})\r?', text)
+            if not m:
                 return None
-            html = r.text
-            m = re.search(r'var\s+portName\s*=\s*["\']([^"\']+)["\'];', html)
-            port_name = m.group(1) if m else self._resolve_port_name_from_tree()
-            if not port_name:
-                port_name = "USB2F7113A9"
-            r2 = self.session.post(f"{self.base_url}/workstatus/reqMonitorData",
-                                   data={"portName": port_name}, timeout=self.TIMEOUT)
-            if r2.status_code == 200:
-                wi = r2.json().get("workInfo")
-                if wi:
-                    return self._parse_work_info(wi)
-        except Exception as e:
-            log.debug(f"reqMonitorData failed: {e}")
-        return None
 
-    def _resolve_port_name_from_tree(self) -> str | None:
-        try:
-            import random
-            r = self.session.get(f"{self.base_url}/initDeviceTree?{random.random()}",
-                                 timeout=self.TIMEOUT)
-            if r.status_code == 200:
-                for node in r.json():
-                    if node.get("pId") == "11" or "USB" in node.get("name", ""):
-                        m = re.match(r'([A-Za-z]+)\s*\(id=([A-Za-z0-9]+)_[A-Za-z0-9]+\)',
-                                     node.get("name", ""))
-                        if m:
-                            return m.group(1) + m.group(2)
-        except Exception as e:
-            log.debug(f"Port from tree failed: {e}")
-        return None
+            parts = m.group(1).split()
+            if len(parts) < 8:
+                return None
 
-    def _parse_work_info(self, wi: dict) -> dict | None:
-        try:
-            def f(v, d=0.0):
-                if v in (None, "", "----"): return d
-                try: return float(v)
-                except: return d
+            input_v   = float(parts[0])
+            output_v  = float(parts[2])
+            load_pct  = int(parts[3])
+            freq      = float(parts[4])
+            bat_v     = float(parts[5])
+            temp_raw  = parts[6]
+            status    = parts[7] if len(parts) > 7 else '00000000'
 
-            def i(v, d=0):
-                if v in (None, "", "----"): return d
-                try: return int(float(v))
-                except: return d
+            # Status bits: bit 0 = Utility Fail (on battery)
+            on_battery = status[0] == '1'
+            ups_mode   = 'Battery mode' if on_battery else 'Line mode'
 
-            temp_raw = wi.get("temperature") or wi.get("upsTemp") or wi.get("temp")
-            temp_val = f(temp_raw) if temp_raw else None
-            # ViewPower returns 0.0 when the UPS has no temperature sensor—treat as None
-            if temp_val == 0.0:
-                temp_val = None
-            temp = temp_val
+            # Estimate battery % from battery voltage
+            # Typical 12V SLA: 100% ~= 13.7V, 0% ~= 10.5V
+            bat_pct = max(0, min(100, int((bat_v - 10.5) / (13.7 - 10.5) * 100)))
+
+            temp = None
+            if temp_raw != '--.-':
+                try:
+                    temp = float(temp_raw)
+                    if temp == 0.0:
+                        temp = None
+                except ValueError:
+                    pass
 
             return {
-                "input_voltage":    f(wi.get("inputVoltage")),
-                "output_voltage":   f(wi.get("outputVoltage")),
-                "frequency":        f(wi.get("outputFrequency")),
-                "load_percent":     i(wi.get("outputLoadPercent")),
-                "battery_voltage":  f(wi.get("batteryVoltage")),
-                "battery_capacity": i(wi.get("batteryCapacity")),
-                "ups_mode":         wi.get("workMode", "Line mode"),
-                "temperature":      temp,
+                'input_voltage':    input_v,
+                'output_voltage':   output_v,
+                'frequency':        freq,
+                'load_percent':     load_pct,
+                'battery_voltage':  bat_v,
+                'battery_capacity': bat_pct,
+                'ups_mode':         ups_mode,
+                'temperature':      temp,
             }
         except Exception as e:
-            log.debug(f"parse_work_info failed: {e}")
-            return None
-
-    def _try_load_info_action(self) -> dict | None:
-        did = self._device_id or self._get_device_id()
-        if not did:
-            return None
-        try:
-            r = self.session.get(f"{self.base_url}/loadInfo.action",
-                                 params={"deviceId": did}, timeout=self.TIMEOUT)
-            if r.status_code == 200:
-                return self._parse_load_info_json(r.json())
-        except Exception as e:
-            log.debug(f"loadInfo.action failed: {e}")
-        return None
-
-    def _try_device_summary_action(self) -> dict | None:
-        did = self._device_id or self._get_device_id()
-        if not did:
-            return None
-        try:
-            r = self.session.get(f"{self.base_url}/getDeviceSummary.action",
-                                 params={"deviceId": did}, timeout=self.TIMEOUT)
-            if r.status_code == 200 and r.text.strip().startswith("{"):
-                return self._parse_load_info_json(r.json())
-        except Exception as e:
-            log.debug(f"getDeviceSummary failed: {e}")
-        return None
-
-    def _get_device_id(self) -> str | None:
-        for ep in ("/deviceList.action", "/getDeviceList.action"):
-            try:
-                r = self.session.get(self.base_url + ep, timeout=self.TIMEOUT)
-                if r.status_code == 200:
-                    j = r.json()
-                    devs = j.get("deviceList") or j.get("devices") or []
-                    if devs:
-                        self._device_id = str(
-                            devs[0].get("deviceId") or devs[0].get("id") or "")
-                        return self._device_id
-            except Exception as e:
-                log.debug(f"deviceList {ep} failed: {e}")
-        return None
-
-    def _parse_load_info_json(self, j: dict) -> dict | None:
-        try:
-            return {
-                "input_voltage":    float(j.get("inputVoltage", 0) or 0),
-                "output_voltage":   float(j.get("outputVoltage", 0) or 0),
-                "frequency":        float(j.get("outputFrequency", 0) or j.get("inputFrequency", 0) or 0),
-                "load_percent":     int(j.get("loadLevel", 0) or j.get("load", 0) or 0),
-                "battery_voltage":  float(j.get("batteryVoltage", 0) or 0),
-                "battery_capacity": int(j.get("batteryCapacity", 0) or 0),
-                "ups_mode":         j.get("upsMode", "Unknown"),
-                "temperature":      None,
-            }
-        except Exception:
-            return None
-
-    def _try_html_monitor(self) -> dict | None:
-        for url in [f"{self.base_url}/monitor", "http://localhost:15178/ViewPower/"]:
-            try:
-                r = self.session.get(url, timeout=self.TIMEOUT)
-                if r.status_code == 200 and "<html" in r.text.lower():
-                    data = self._parse_html(r.text)
-                    if data:
-                        return data
-            except Exception as e:
-                log.debug(f"HTML scrape {url} failed: {e}")
-        return None
-
-    def _parse_html(self, html: str) -> dict | None:
-        try:
-            soup = BeautifulSoup(html, "html.parser")
-
-            def _num(txt):
-                m = re.search(r"[-+]?\d*\.?\d+", txt)
-                return float(m.group()) if m else None
-
-            def find_val(label):
-                for tag in soup.find_all(string=lambda t: t and label.lower() in t.lower()):
-                    p = tag.parent
-                    for sib in [p.find_next_sibling(), p.parent.find_next_sibling()]:
-                        if sib:
-                            n = _num(sib.get_text(strip=True))
-                            if n is not None:
-                                return n
-                return 0
-
-            iv = find_val("Input voltage")
-            ov = find_val("Output voltage")
-            of = find_val("Output frequency")
-            ll = find_val("Load level")
-            bv = find_val("Battery voltage")
-            bc = find_val("Battery capacity")
-
-            inputs = soup.find_all("input", {"type": "text"})
-            values = [_num(inp.get("value", "")) for inp in inputs if inp.get("value")]
-            values = [v for v in values if v is not None]
-            if len(values) >= 6 and iv == 0:
-                iv, ov, of, ll, bv, bc = values[:6]
-
-            if iv == 0 and ov == 0:
-                return None
-            return {"input_voltage": iv, "output_voltage": ov, "frequency": of,
-                    "load_percent": int(ll), "battery_voltage": bv,
-                    "battery_capacity": int(bc), "ups_mode": "Line mode",
-                    "temperature": None}
-        except Exception as e:
-            log.debug(f"HTML parse error: {e}")
+            log.debug(f"Q1 parse error: {e} | raw: {raw!r}")
             return None
 
 
 # ══════════════════════════════════════════════════════
 #  POLLING LOOPS
 # ══════════════════════════════════════════════════════
-vp_client = ViewPowerClient()
+ups_client = DirectUPSClient()
 
 
 def fast_poll_loop():
@@ -1012,7 +910,7 @@ def fast_poll_loop():
     log.info("Fast poll loop started.")
     while True:
         try:
-            data = vp_client.fetch()
+            data = ups_client.fetch()
             with state_lock:
                 if data:
                     cfg    = get_model_cfg()

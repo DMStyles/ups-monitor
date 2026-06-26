@@ -26,10 +26,9 @@ a = Analysis(
         "jinja2",
         "werkzeug",
         "werkzeug.serving",
-        # Networking
-        "requests",
-        "bs4",
-        "bs4",
+        # HID (direct USB)
+        "hid",
+        "hidapi",
         # Image
         "PIL",
         "PIL.Image",
