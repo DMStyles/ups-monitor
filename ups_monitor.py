@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.6.6"
+VERSION = "v1.6.7"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -141,8 +141,8 @@ MAX_READING_GAP = 300   # seconds — gaps > this = PC/app was off, skip for ene
 
 # ══════════════════════════════════════════════════════
 #  GLOBAL STATE
-# ══════════════════════════════════════════════════════
-state_lock = threading.Lock()
+state_lock    = threading.Lock()
+state_updated = threading.Event()   # signals SSE subscribers on every new poll
 ups_state: dict = {
     "connected":         False,
     "ups_mode":          "Unknown",
@@ -1071,10 +1071,15 @@ def fast_poll_loop():
                         record_outage_end(ups_state.get("battery_capacity", 0))
                         _last_on_battery = False
                     ups_state["connected"] = False
+                # notify SSE subscribers of new data
+                state_updated.set()
+                state_updated.clear()
         except Exception as e:
             log.error(f"Fast poll error: {e}")
             with state_lock:
                 ups_state["connected"] = False
+            state_updated.set()
+            state_updated.clear()
 
         time.sleep(max(1, settings.get("fast_poll_interval", 2)))
 
@@ -1170,6 +1175,65 @@ def api_status():
         "version":               VERSION,
     })
     return jsonify(s)
+
+
+@flask_app.route("/api/stream")
+def api_stream():
+    """Server-Sent Events endpoint - pushes a status frame whenever ups_state changes."""
+    def generate():
+        # Send an initial frame immediately on connect
+        try:
+            with state_lock:
+                s = dict(ups_state)
+            today = get_daily_stats()
+            cfg   = get_model_cfg()
+            s.update({
+                "daily_kwh":             today["kwh"],
+                "daily_cost":            today["cost_lkr"],
+                "samples":               today["samples"],
+                "elec_rate":             settings.get("elec_rate", 30.0),
+                "max_watts":             cfg["max_watts"],
+                "ups_model":             settings.get("ups_model", "Prolink PRO1201SFC"),
+                "temperature_supported": cfg.get("temperature_supported", True),
+                "version":               VERSION,
+            })
+            yield f"data: {json.dumps(s)}\n\n"
+        except Exception as e:
+            log.error(f"SSE initial frame error: {e}")
+
+        while True:
+            # Block until the poll loop signals new data (with 5s timeout as keepalive)
+            state_updated.wait(timeout=5)
+            try:
+                with state_lock:
+                    s = dict(ups_state)
+                today = get_daily_stats()
+                cfg   = get_model_cfg()
+                s.update({
+                    "daily_kwh":             today["kwh"],
+                    "daily_cost":            today["cost_lkr"],
+                    "samples":               today["samples"],
+                    "elec_rate":             settings.get("elec_rate", 30.0),
+                    "max_watts":             cfg["max_watts"],
+                    "ups_model":             settings.get("ups_model", "Prolink PRO1201SFC"),
+                    "temperature_supported": cfg.get("temperature_supported", True),
+                    "version":               VERSION,
+                })
+                yield f"data: {json.dumps(s)}\n\n"
+            except GeneratorExit:
+                break
+            except Exception as e:
+                log.error(f"SSE stream error: {e}")
+                yield f"data: {{}}\n\n"
+
+    return flask_app.response_class(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":  "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @flask_app.route("/api/settings", methods=["GET", "POST"])
