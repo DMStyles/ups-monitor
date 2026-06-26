@@ -179,17 +179,21 @@
               </div>
             </div>
           </div>
-        </section>
-
         <!-- QUICK ACTIONS -->
-        <section class="card quick-actions-card">
-          <h2 class="card-title">Quick Actions</h2>
-          <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap;">
-            <button class="settings-btn" onclick="sendUpsAction('mute')" style="flex:1; padding:12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;">
-              <span>🔕</span> Mute Alarm
+        <section class="quick-actions-card">
+          <div class="quick-actions-title">
+            <span>⚡</span>
+            <div>
+              <strong>Hardware Controls</strong>
+              <div style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">Direct USB command link active</div>
+            </div>
+          </div>
+          <div class="quick-actions-buttons">
+            <button class="qa-btn mute-btn" onclick="sendUpsAction('mute')">
+              🔕 Mute Alarm
             </button>
-            <button class="settings-btn" onclick="sendUpsAction('test')" style="flex:1; padding:12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:8px;">
-              <span>⚡</span> 10s Self-Test
+            <button class="qa-btn test-btn" onclick="sendUpsAction('test')">
+              🔋 10s Self-Test
             </button>
           </div>
         </section>
