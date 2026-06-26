@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.6.5"
+VERSION = "v1.6.6"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -156,6 +156,7 @@ ups_state: dict = {
     "temperature":       None,
     "runtime_estimate":  None,   # minutes remaining on battery
     "on_battery":        False,
+    "beeper_on":         True,   # True = alarm active, False = muted
     "last_update":       None,
 }
 
@@ -1062,6 +1063,7 @@ def fast_poll_loop():
                         "temperature":      data.get("temperature"),
                         "runtime_estimate": rt,
                         "on_battery":       on_bat,
+                        "beeper_on":        data.get("beeper_on", True),
                         "last_update":      datetime.now().isoformat(),
                     })
                 else:
