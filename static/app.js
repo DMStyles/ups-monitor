@@ -264,9 +264,15 @@ async function pollStatus() {
     }
     
     // Battery alert & runtime
-    if (d.on_battery) {
+    if (d.on_battery || d.ups_mode === 'Self-Test') {
       document.body.classList.add('on-battery-theme');
-      document.getElementById('battery-alert').style.display = 'flex';
+      
+      if (d.ups_mode === 'Self-Test') {
+          document.getElementById('battery-alert').style.display = 'none'; // Don't show outage text
+      } else {
+          document.getElementById('battery-alert').style.display = 'flex';
+      }
+      
       if (d.runtime_estimate !== null) {
         document.getElementById('runtime-badge').style.display = 'flex';
         document.getElementById('runtime-val').innerText = d.runtime_estimate;

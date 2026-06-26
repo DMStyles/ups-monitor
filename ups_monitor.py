@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.6.4"
+VERSION = "v1.6.5"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -884,7 +884,13 @@ class DirectUPSClient:
 
             # Status bits: bit 0 = Utility Fail (on battery)
             on_battery = status[0] == '1'
-            ups_mode   = 'Battery mode' if on_battery else 'Line mode'
+            test_active = status[5] == '1' if len(status) == 8 else False
+            
+            if test_active:
+                ups_mode = 'Self-Test'
+            else:
+                ups_mode = 'Battery mode' if on_battery else 'Line mode'
+                
             beeper_on  = status[7] == '1' if len(status) == 8 else True
 
             # Estimate battery % from battery voltage

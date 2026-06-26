@@ -3,7 +3,7 @@
 ; -------------------------------------------------------
 
 #define MyAppName "UPS Power Monitor"
-#define MyAppVersion "1.6.4"
+#define MyAppVersion "1.6.5"
 #define MyAppPublisher "DMStyles"
 #define MyAppURL "https://github.com/DMStyles/ups-monitor"
 #define MyAppExeName "UPS Power Monitor.exe"
