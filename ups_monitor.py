@@ -28,7 +28,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.6.3"
+VERSION = "v1.6.4"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -885,6 +885,7 @@ class DirectUPSClient:
             # Status bits: bit 0 = Utility Fail (on battery)
             on_battery = status[0] == '1'
             ups_mode   = 'Battery mode' if on_battery else 'Line mode'
+            beeper_on  = status[7] == '1' if len(status) == 8 else True
 
             # Estimate battery % from battery voltage
             # Typical 12V SLA: 100% ~= 13.7V, 0% ~= 10.5V
@@ -908,6 +909,7 @@ class DirectUPSClient:
                 'battery_capacity': bat_pct,
                 'ups_mode':         ups_mode,
                 'temperature':      temp,
+                'beeper_on':        beeper_on,
             }
         except Exception as e:
             log.debug(f"Q1 parse error: {e} | raw: {raw!r}")

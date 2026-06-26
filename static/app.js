@@ -230,6 +230,20 @@ async function pollStatus() {
     document.getElementById('v-batcap').innerText = bc + '%';
     document.getElementById('bat-bar').style.width = bc + '%';
     
+    // Update Beeper UI
+    const muteBtn = document.getElementById('mute-btn');
+    if (muteBtn && typeof d.beeper_on !== 'undefined') {
+      if (d.beeper_on) {
+        muteBtn.innerHTML = '🔕 Mute Alarm';
+        muteBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+        muteBtn.style.color = '#fff';
+      } else {
+        muteBtn.innerHTML = '🔔 Unmute Alarm';
+        muteBtn.style.borderColor = 'var(--accent2)';
+        muteBtn.style.color = 'var(--accent2)';
+      }
+    }
+    
     document.getElementById('v-input').innerText = d.input_voltage.toFixed(1) + ' V';
     document.getElementById('v-output').innerText = d.output_voltage.toFixed(1) + ' V';
     document.getElementById('v-freq').innerText = d.frequency.toFixed(1) + ' Hz';
