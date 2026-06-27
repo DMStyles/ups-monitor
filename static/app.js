@@ -284,7 +284,13 @@ function applyStatus(d) {
     document.getElementById('today-kwh').innerText = d.daily_kwh.toFixed(3);
     document.getElementById('today-cost').innerText = 'LKR ' + d.daily_cost.toFixed(2);
     document.getElementById('today-samples').innerText = d.samples;
-    
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const d = await res.json();
+    applyStatus(d);
   } catch (err) {
     console.log("Poll failed", err);
   }
