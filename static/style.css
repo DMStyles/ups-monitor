@@ -1,4 +1,4 @@
-/* ──────────────────────────────────────────────────
+﻿/* ──────────────────────────────────────────────────
    UPS Power Monitor — style.css
    Dark glassmorphism dashboard
 ────────────────────────────────────────────────── */
@@ -115,7 +115,12 @@ body {
 .status-disconnected{ background: rgba(255,82,82,0.12);  border-color: rgba(255,82,82,0.3); color: var(--danger); }
 .status-disconnected .status-dot{ background: var(--danger); animation: pulse-red 2s infinite; }
 .status-connecting  { background: rgba(255,197,66,0.12); border-color: rgba(255,197,66,0.3); color: var(--warn); }
-.status-connecting  .status-dot { background: var(--warn); animation: pulse-yellow 2s infinite; }
+.status-connecting  .status-dot { background: var(--warn); animation: pulse-yellow 1.5s infinite; }
+.status-connected { animation: status-glow-pulse 3s infinite alternate; }
+@keyframes status-glow-pulse {
+  from { box-shadow: 0 0 10px rgba(0,229,160,0.1); }
+  to { box-shadow: 0 0 20px rgba(0,229,160,0.3); }
+}
 
 @keyframes pulse-green {
   0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.7); }
@@ -189,17 +194,19 @@ body {
 
 /* ── CARDS ─────────────────────────────── */
 .card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
+  background: rgba(10, 14, 26, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.05);
   transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), box-shadow 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), border-color 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
 }
 .card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 16px 48px rgba(0,229,160,0.12);
-  border-color: rgba(0,229,160,0.3);
+  box-shadow: 0 16px 48px rgba(0,229,160,0.15), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  border-color: rgba(0,229,160,0.4);
 }
 .card-title {
   font-size: 0.9rem;
@@ -249,13 +256,15 @@ body {
   text-align: center;
 }
 .gauge-watts {
-  font-size: 2.6rem;
+  font-size: 2.8rem;
   font-weight: 800;
-  color: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   font-family: var(--mono);
-  line-height: 1;
-  text-shadow: 0 0 20px rgba(0,229,160,0.5);
-  transition: color var(--transition);
+  line-height: 1.1;
+  filter: drop-shadow(0 0 12px rgba(0,229,160,0.4));
+  transition: opacity var(--transition);
 }
 .gauge-unit  { font-size: 0.9rem; color: var(--text-muted); font-weight: 500; }
 .gauge-max   { font-size: 0.72rem; color: var(--text-dim); margin-top: 3px; }
@@ -296,7 +305,15 @@ body {
 .today-divider { width: 1px; height: 60px; background: var(--card-border); }
 .today-stat { text-align: center; flex: 1; }
 .today-icon { font-size: 1.4rem; margin-bottom: 6px; }
-.today-val  { font-size: 1.4rem; font-weight: 700; color: var(--text); font-family: var(--mono); }
+.today-val { 
+  font-size: 1.6rem; 
+  font-weight: 800; 
+  background: linear-gradient(135deg, #ffffff, #a5b4fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-family: var(--mono); 
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.1));
+}
 .today-label{ font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .battery-alert {
@@ -318,10 +335,10 @@ body {
   transition: border-color var(--transition), transform var(--transition), background var(--transition), box-shadow var(--transition);
 }
 .vital-item:hover {
-  border-color: rgba(0,229,160,0.35);
+  border-color: rgba(0,229,160,0.4);
   transform: translateY(-2px) scale(1.02);
-  background: rgba(255,255,255,0.05);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.06);
+  box-shadow: 0 8px 24px rgba(0,229,160,0.15), inset 0 1px 1px rgba(255,255,255,0.1);
 }
 .vital-icon {
   font-size: 1.2rem; flex-shrink: 0;
@@ -370,7 +387,14 @@ body {
   flex-wrap: wrap; gap: 16px;
 }
 .m-stat { text-align: center; flex: 1; min-width: 100px; }
-.m-stat-val { font-size: 1.4rem; font-weight: 700; color: var(--text); font-family: var(--mono); }
+.m-stat-val { 
+  font-size: 1.6rem; 
+  font-weight: 800; 
+  background: linear-gradient(135deg, #ffffff, #a5b4fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-family: var(--mono); 
+}
 .m-stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
 .m-stat-div { width: 1px; height: 40px; background: var(--card-border); }
 
@@ -535,7 +559,7 @@ input:checked + .toggle-slider:before { transform: translateX(20px); }
 
 .bill-card-icon { font-size: 2rem; line-height: 1; flex-shrink: 0; }
 .bill-card-body { display: flex; flex-direction: column; gap: 3px; }
-.bill-card-val   { font-size: 1.35rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.bill-card-val   { font-size: 1.4rem; font-weight: 800; color: var(--text); letter-spacing: -0.02em; filter: drop-shadow(0 0 8px rgba(255,255,255,0.2)); }
 .bill-card-label { font-size: 0.73rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 
 .bill-card-blue  .bill-card-val { color: var(--accent2); }
@@ -858,5 +882,25 @@ body.on-battery-theme .status-badge.status-connected .status-dot {
 .qa-btn.test-btn:hover { border-color: var(--warn); color: var(--warn); }
 .settings-input option {
   background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Cloud profile stat boxes ─────────────────────────────── */
+.cloud-stat-box {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.cloud-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.cloud-stat-val {
+  font-size: 0.92rem;
+  font-weight: 600;
   color: var(--text);
 }

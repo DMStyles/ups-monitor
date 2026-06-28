@@ -500,7 +500,7 @@
             <div class="app-info-logo">⚡</div>
             <div>
               <div class="app-info-name">UPS Power Monitor</div>
-              <div class="app-info-ver" id="s-version">v1.3.0</div>
+              <div class="app-info-ver" id="s-version">—</div>
               <a href="https://github.com/DMStyles/ups-monitor" target="_blank" class="gh-link">
                 View on GitHub →
               </a>
@@ -511,6 +511,40 @@
               🔍 Check for Updates
             </button>
             <div id="update-status-msg" class="update-status-msg"></div>
+          </div>
+        </section>
+
+        <!-- Cloud Profile -->
+        <section class="card settings-card" id="cloud-profile-card">
+          <h2 class="card-title">☁️ Cloud Account</h2>
+          <div id="cloud-not-signed-in">
+            <p style="color:var(--text-dim); font-size:0.875rem; margin:0 0 14px 0;">Sign in to sync your data and settings across devices.</p>
+            <button class="settings-btn settings-btn-primary" style="width:100%;" onclick="document.getElementById('btn-cloud-login').click()">
+              Sign in with Google
+            </button>
+          </div>
+          <div id="cloud-signed-in" style="display:none;">
+            <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
+              <img id="cloud-avatar" src="" alt="" style="width:52px;height:52px;border-radius:50%;border:2px solid var(--accent);object-fit:cover;display:none;">
+              <div style="flex:1;">
+                <div id="cloud-name" style="font-weight:700; font-size:1rem;"></div>
+                <div id="cloud-email" style="color:var(--text-dim); font-size:0.82rem; margin-top:2px;"></div>
+              </div>
+              <span style="background:rgba(0,229,160,0.15);color:var(--accent);font-size:0.75rem;padding:3px 9px;border-radius:20px;font-weight:600;">Synced</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+              <div class="cloud-stat-box">
+                <div class="cloud-stat-label">Last Sync</div>
+                <div class="cloud-stat-val" id="cloud-last-sync">—</div>
+              </div>
+              <div class="cloud-stat-box">
+                <div class="cloud-stat-label">Settings Backup</div>
+                <div class="cloud-stat-val" style="color:var(--accent);">✓ Active</div>
+              </div>
+            </div>
+            <button class="settings-btn" style="width:100%;background:rgba(255,82,82,0.12);color:#ff5252;border:1px solid rgba(255,82,82,0.3);" onclick="signOutCloud()">
+              Sign Out
+            </button>
           </div>
         </section>
 
@@ -679,6 +713,6 @@
 
   </div><!-- /app-wrapper -->
 
-  <script src="/static/app.js?v=1.4.4"></script>
+  <script src="/static/app.js?v=2.0.4"></script>
 </body>
 </html>

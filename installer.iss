@@ -1,5 +1,5 @@
 ; UPS Power Monitor — Inno Setup Script
-; Creates a professional Windows installer for v1.0.0
+; Creates a professional Windows installer for v2.0.0
 ; -------------------------------------------------------
 
 #define MyAppName "UPS Power Monitor"
@@ -88,3 +88,4 @@ begin
     );
   end;
 end;
+

@@ -1,4 +1,4 @@
-let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltChart;
+﻿let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltChart;
 let globalMaxWatts = 840;
 let fastPollInterval = 2000;
 let currentMonth = new Date().toISOString().slice(0, 7);
@@ -38,9 +38,9 @@ async function initDashboard() {
   setInterval(loadWeekData, 300000);
 }
 
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // SETTINGS
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function loadSettings() {
   try {
     const res = await fetch('/api/settings');
@@ -78,11 +78,64 @@ async function loadSettings() {
     document.getElementById('s-autostart').checked = !!settings.autostart;
     document.getElementById('s-battery-replaced').value = settings.battery_replaced_date || '';
     
+    // Set version label from API response
+    if (settings.version) {
+      const el = document.getElementById('s-version');
+      if (el) el.innerText = settings.version;
+    }
+
     onModelChange();
-    
+    loadCloudProfile();
+
   } catch (err) {
     console.error("Error loading settings:", err);
   }
+}
+
+
+async function loadCloudProfile() {
+  try {
+    const res = await fetch('/api/cloud_user');
+    const u = await res.json();
+    const notIn    = document.getElementById('cloud-not-signed-in');
+    const signedIn = document.getElementById('cloud-signed-in');
+    if (!notIn || !signedIn) return;
+
+    if (u.signed_in) {
+      notIn.style.display = 'none';
+      signedIn.style.display = '';
+      document.getElementById('cloud-name').innerText  = u.name  || u.email;
+      document.getElementById('cloud-email').innerText = u.email || '';
+      const avatar = document.getElementById('cloud-avatar');
+      if (u.avatar_url) {
+        avatar.src = u.avatar_url;
+        avatar.style.display = '';
+      } else {
+        avatar.style.display = 'none';
+      }
+      const now = new Date();
+      document.getElementById('cloud-last-sync').innerText =
+        now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    } else {
+      notIn.style.display = '';
+      signedIn.style.display = 'none';
+    }
+  } catch(e) { console.warn('loadCloudProfile error', e); }
+}
+
+async function signOutCloud() {
+  if (!confirm('Sign out of Cloud Sync?')) return;
+  try {
+    await fetch('/api/cloud_signout', { method: 'POST' });
+    const btnCloud = document.getElementById('btn-cloud-login');
+    if (btnCloud) {
+      btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
+      btnCloud.style.background = '';
+      btnCloud.style.color = '';
+      btnCloud.disabled = false;
+    }
+    loadCloudProfile();
+  } catch(e) { console.warn('signOutCloud error', e); }
 }
 
 function onModelChange() {
@@ -100,12 +153,12 @@ function onModelChange() {
     
     globalMaxWatts = spec.max_watts;
     document.getElementById('gauge-max-label').innerText = `of ${spec.max_watts} W max`;
-    document.getElementById('header-sub').innerHTML = `${model} &nbsp;•&nbsp; ${spec.max_watts}W Max Output`;
+    document.getElementById('header-sub').innerHTML = `${model} &nbsp;&bull;&nbsp; ${spec.max_watts}W Max Output`;
   }
 }
 
 async function saveSettings() {
-  // ── Validate numeric fields before building payload ──────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Validate numeric fields before building payload Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   const lowBatRaw = parseInt(document.getElementById('s-low-bat').value);
   const sdPctRaw  = parseInt(document.getElementById('s-shutdown-pct').value);
   const sdMinsRaw = parseInt(document.getElementById('s-shutdown-mins').value);
@@ -166,12 +219,12 @@ document.getElementById('s-db-write').addEventListener('input', e => {
   document.getElementById('s-db-write-val').innerText = e.target.value + 's';
 });
 
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // PREVENT SCROLL WHEEL FROM CHANGING NUMBER INPUTS
 // This is the root cause of the "rate randomly drops" bug:
 // hovering a number input while scrolling the page silently
 // changes its value, which then gets saved on next Save click.
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 document.querySelectorAll('input[type=number]').forEach(input => {
   input.addEventListener('wheel', e => {
     e.preventDefault();
@@ -179,9 +232,9 @@ document.querySelectorAll('input[type=number]').forEach(input => {
   }, { passive: false });
 });
 
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // DASHBOARD
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function setGauge(watts) {
   const pct = Math.min(Math.max(watts / globalMaxWatts, 0), 1);
   const path = document.getElementById('gauge-fill-arc');
@@ -230,11 +283,11 @@ function applyStatus(d) {
     const muteBtn = document.getElementById('mute-btn');
     if (muteBtn && typeof d.beeper_on !== 'undefined') {
       if (d.beeper_on) {
-        muteBtn.innerHTML = '🔕 Mute Alarm';
+        muteBtn.innerHTML = '\uD83D\uDD15 Mute Alarm';
         muteBtn.style.borderColor = 'rgba(255,255,255,0.1)';
         muteBtn.style.color = '#fff';
       } else {
-        muteBtn.innerHTML = '🔔 Unmute Alarm';
+        muteBtn.innerHTML = '\uD83D\uDD14 Unmute Alarm';
         muteBtn.style.borderColor = 'var(--accent2)';
         muteBtn.style.color = 'var(--accent2)';
       }
@@ -284,6 +337,24 @@ function applyStatus(d) {
     document.getElementById('today-kwh').innerText = d.daily_kwh.toFixed(3);
     document.getElementById('today-cost').innerText = 'LKR ' + d.daily_cost.toFixed(2);
     document.getElementById('today-samples').innerText = d.samples;
+
+    // Update Cloud Synced button status dynamically
+    const btnCloud = document.getElementById('btn-cloud-login');
+    if (btnCloud) {
+      if (d.cloud_synced) {
+        btnCloud.innerHTML = '<i class="ph ph-cloud-check"></i> Cloud Synced';
+        btnCloud.style.background = 'rgba(0,229,160,0.5)';
+        btnCloud.style.color = '#fff';
+        btnCloud.disabled = true;
+      } else {
+        if (!btnCloud.innerText.includes('Opening') && !btnCloud.innerText.includes('Waiting')) {
+          btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
+          btnCloud.style.background = '';
+          btnCloud.style.color = '';
+          btnCloud.disabled = false;
+        }
+      }
+    }
 }
 
 async function pollStatus() {
@@ -315,9 +386,9 @@ async function loadWeekData() {
   } catch (e) { console.error("Error loading week data", e); }
 }
 
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // ANALYTICS
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function loadAnalytics() {
   document.getElementById('month-label').innerText = currentMonth;
   
@@ -364,14 +435,14 @@ async function loadAnalytics() {
       tb.innerHTML = oData.map((o, i) => {
         const start = new Date(o.started_at).toLocaleString();
         const end = o.ended_at ? new Date(o.ended_at).toLocaleString() : 'Ongoing';
-        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : '—';
+        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : 'Ã¢â‚¬â€';
         return `<tr>
           <td>${oData.length - i}</td>
           <td>${start}</td>
           <td>${end}</td>
           <td>${dur}</td>
           <td style="color:var(--accent)">${o.battery_at_start}%</td>
-          <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : '—'}</td>
+          <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : 'Ã¢â‚¬â€'}</td>
           <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
         </tr>`;
       }).join('');
@@ -396,11 +467,11 @@ function updateBatteryHealthUI(h) {
   const pickerEl = document.getElementById('bh-date-picker');
 
   if (!h || h.status === 'no_data' || h.health_pct === null) {
-    pctEl.innerText = '—%';
+    pctEl.innerText = 'Ã¢â‚¬â€%';
     badgeEl.className = 'bh-status-badge bh-status-nodata';
     badgeEl.innerText = 'No Data';
-    avgVEl.innerText = '—';
-    ageEl.innerText = '—';
+    avgVEl.innerText = 'Ã¢â‚¬â€';
+    ageEl.innerText = 'Ã¢â‚¬â€';
     if (pickerEl) pickerEl.value = h ? h.replaced_date : '';
     return;
   }
@@ -462,9 +533,9 @@ function changeMonth(delta) {
   loadAnalytics();
 }
 
-// ───────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // CEB BILL ESTIMATOR
-// ───────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function loadBillEstimate() {
   const billDays = parseInt(document.getElementById('s-billing-days')?.value) || 30;
   document.getElementById('bill-month-label').innerText = currentBillMonth;
@@ -485,7 +556,7 @@ async function loadBillEstimate() {
     // Tier breakdown rows
     const tierContainer = document.getElementById('bill-tier-rows');
     tierContainer.innerHTML = bill.breakdown.map(tier => {
-      const label = `LKR ${tier.rate.toFixed(2)} × ${tier.units.toFixed(2)} units`;
+      const label = `LKR ${tier.rate.toFixed(2)} Ãƒâ€” ${tier.units.toFixed(2)} units`;
       return `
         <div class="bill-tier-row">
           <span class="bill-tier-label">${label}</span>
@@ -525,7 +596,7 @@ async function showDailyDetail(dateStr) {
     const samples = data.reduce((s, r) => s + r.samples, 0);
     
     document.getElementById('d-kwh').innerText = kwh.toFixed(3);
-    document.getElementById('d-peak').innerText = peak > 0 ? peak : '—';
+    document.getElementById('d-peak').innerText = peak > 0 ? peak : 'Ã¢â‚¬â€';
     document.getElementById('d-avg').innerText = avg.toFixed(1);
     document.getElementById('d-readings').innerText = samples;
     
@@ -554,9 +625,9 @@ function exportCSV() {
   window.location.href = `/api/export?start=${start}&end=${end}`;
 }
 
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // UPDATER
-// ─────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 let updateUrl = null;
 async function manualCheckUpdate() {
   const btn = document.getElementById('check-update-btn');
@@ -605,9 +676,10 @@ async function performUpdate() {
   await fetch('/api/perform_update', { method: 'POST', body: JSON.stringify({ download_url: updateUrl }) });
 }
 
-// ─────────────────────────────────────────────────────────
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CHARTS INIT
-// ─────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function initCharts() {
   const commonOpts = {
     responsive: true, maintainAspectRatio: false,
@@ -680,7 +752,7 @@ function initCharts() {
 window.onload = () => {
   initDashboard();
   setTimeout(checkUpdateQuietly, 5000);
-  
+
   // Create SVG Gradient for Gauge
   const svgNS = "http://www.w3.org/2000/svg";
   const defs = document.createElementNS(svgNS, 'defs');
@@ -691,6 +763,7 @@ window.onload = () => {
   grad.appendChild(stop1); grad.appendChild(stop2); defs.appendChild(grad);
   document.querySelector('.gauge-svg').prepend(defs);
 };
+
 function sendUpsAction(action) {
   fetch('/api/ups/action', {
     method: 'POST',
@@ -707,3 +780,35 @@ function sendUpsAction(action) {
   })
   .catch(err => console.error('UPS Action error:', err));
 }
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOUD SYNC (Initiated via Backend OAuth Callback)
+// ─────────────────────────────────────────────────────────────────────────────
+function initCloudAuth() {
+  const btnCloud = document.getElementById('btn-cloud-login');
+  if (!btnCloud) return;
+
+  btnCloud.addEventListener('click', async () => {
+    try {
+      btnCloud.disabled = true;
+      btnCloud.innerText = 'Opening browser...';
+      const res = await fetch('/api/cloud/login', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        btnCloud.innerText = 'Waiting for sign-in...';
+      } else {
+        btnCloud.disabled = false;
+        btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
+        alert('Failed to initiate login.');
+      }
+    } catch (e) {
+      console.warn('Cloud login error', e);
+      btnCloud.disabled = false;
+      btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
+    }
+  });
+}
+
+window.addEventListener('load', () => setTimeout(initCloudAuth, 500));

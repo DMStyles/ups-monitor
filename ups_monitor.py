@@ -11,6 +11,7 @@ import json
 import re
 import time
 import sqlite3
+import supabase_sync
 import requests
 import logging
 import threading
@@ -28,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v1.6.10"
+VERSION = "v2.0.0"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1171,6 +1172,7 @@ def api_status():
         "ups_model":             settings.get("ups_model", "Prolink PRO1201SFC"),
         "temperature_supported": cfg.get("temperature_supported", True),
         "version":               VERSION,
+        "cloud_synced":          supabase_sync.sync_enabled,
     })
     return jsonify(s)
 
@@ -1194,6 +1196,7 @@ def api_stream():
                 "ups_model":             settings.get("ups_model", "Prolink PRO1201SFC"),
                 "temperature_supported": cfg.get("temperature_supported", True),
                 "version":               VERSION,
+        "cloud_synced":          supabase_sync.sync_enabled,
             })
             yield f"data: {json.dumps(s)}\n\n"
         except Exception as e:
@@ -1217,6 +1220,7 @@ def api_stream():
                     "ups_model":             settings.get("ups_model", "Prolink PRO1201SFC"),
                     "temperature_supported": cfg.get("temperature_supported", True),
                     "version":               VERSION,
+        "cloud_synced":          supabase_sync.sync_enabled,
                 })
                 yield f"data: {json.dumps(s)}\n\n"
             except GeneratorExit:
@@ -1303,6 +1307,14 @@ def api_settings():
             set_autostart(bool(body["autostart"]))
         settings["autostart"] = get_autostart()
         save_settings(settings)
+        # Sync settings to cloud if signed in
+        try:
+            import supabase_sync
+            if supabase_sync.sync_enabled:
+                threading.Thread(target=supabase_sync.sync_settings_to_cloud,
+                                 args=(dict(settings),), daemon=True).start()
+        except Exception:
+            pass
         return jsonify({"ok": True, **settings})
     settings["autostart"] = get_autostart()
     return jsonify(settings)
@@ -1593,6 +1605,113 @@ def api_show_window():
     return jsonify({"ok": True})
 
 
+@flask_app.route("/api/cloud/login", methods=["POST"])
+def api_cloud_login():
+    """Initiates Supabase OAuth by opening default browser."""
+    import webbrowser
+    auth_url = f"https://izupevznjwrqzfoyzxhw.supabase.co/auth/v1/authorize?provider=google&redirect_to=http://localhost:{DASHBOARD_PORT}/api/oauth/callback"
+    webbrowser.open(auth_url)
+    return jsonify({"ok": True})
+
+
+@flask_app.route("/api/oauth/callback")
+def api_oauth_callback():
+    """Serves the redirect target page that extracts tokens and POSTs back to local api."""
+    html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <title>UPS Monitor - Cloud Sync Status</title>
+</head>
+<body style="font-family: sans-serif; background: #0b0f19; color: #f8fafc; text-align: center; padding-top: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh;">
+    <div style="background: rgba(255,255,255,0.05); padding: 30px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); max-width: 450px;">
+        <h2 style="color: #00e5a0; margin-top:0;">☁️ Cloud Sync Authorization</h2>
+        <p id="status" style="font-size: 1.1rem; line-height: 1.5;">Reading authentication data...</p>
+    </div>
+    <script>
+        const hash = window.location.hash;
+        if (hash) {
+            const params = new URLSearchParams(hash.replace('#', '?'));
+            const access_token = params.get('access_token');
+            const refresh_token = params.get('refresh_token');
+            if (access_token) {
+                document.getElementById('status').innerText = 'Connecting application to cloud...';
+                fetch('/api/set_supabase_token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_token, refresh_token })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('status').innerHTML = '<span style="color:#00e5a0; font-weight:bold;">Success!</span><br><br>UPS Monitor Cloud Sync is now authorized and active.<br>You can safely close this browser window and return to the app.';
+                })
+                .catch(err => {
+                    document.getElementById('status').innerText = 'Error sending authorization to app: ' + err.message;
+                });
+            } else {
+                document.getElementById('status').innerText = 'Auth failed: No access token in redirect URL.';
+            }
+        } else {
+            document.getElementById('status').innerText = 'No credentials found. Please sign in via the app.';
+        }
+    </script>
+</body>
+</html>"""
+    return html_content
+
+
+@flask_app.route("/api/open_browser", methods=["POST"])
+def api_open_browser():
+    """Open a URL in the system default browser (needed for Google OAuth in WebView2)."""
+    import webbrowser
+    data = request.json or {}
+    url = data.get("url", "")
+    if url.startswith("https://"):
+        webbrowser.open(url)
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Invalid URL"}), 400
+
+
+@flask_app.route("/api/set_supabase_token", methods=["POST"])
+def api_set_supabase_token():
+    data = request.json or {}
+    access_token  = data.get("access_token", "")
+    refresh_token = data.get("refresh_token", "")
+    if access_token:
+        try:
+            import supabase_sync
+            supabase_sync.set_supabase_session(access_token, refresh_token)
+            log.info("Supabase session updated from frontend")
+        except Exception as e:
+            log.warning(f"supabase_sync.set_supabase_session failed: {e}")
+    return jsonify({"ok": True})
+
+
+@flask_app.route("/api/cloud_user")
+def api_cloud_user():
+    """Return the currently signed-in cloud user's profile info."""
+    try:
+        import supabase_sync
+        return jsonify({
+            "signed_in":  supabase_sync.sync_enabled,
+            "name":       supabase_sync.user_name  or "",
+            "email":      supabase_sync.user_email or "",
+            "avatar_url": supabase_sync.user_avatar or "",
+        })
+    except Exception as e:
+        return jsonify({"signed_in": False, "name": "", "email": "", "avatar_url": ""})
+
+
+@flask_app.route("/api/cloud_signout", methods=["POST"])
+def api_cloud_signout():
+    """Sign out of Supabase cloud sync."""
+    try:
+        import supabase_sync
+        supabase_sync.sign_out_supabase()
+    except Exception as e:
+        log.warning(f"Cloud sign-out error: {e}")
+    return jsonify({"ok": True})
+
+
 def run_flask():
     log.info(f"Flask starting on :{DASHBOARD_PORT}")
     flask_app.run(host="127.0.0.1", port=DASHBOARD_PORT, debug=False, use_reloader=False, threaded=True)
@@ -1707,6 +1826,11 @@ def main():
     log.info("=" * 60)
     log.info(f"UPS Power Monitor {VERSION} starting…")
     init_db()
+    try:
+        import supabase_sync
+        supabase_sync.start_sync_thread(str(DB_PATH))
+    except Exception as e:
+        log.error(f"Failed to start supabase sync thread: {e}")
 
     threading.Thread(target=fast_poll_loop, daemon=True).start()
     threading.Thread(target=db_write_loop,  daemon=True).start()
@@ -1788,3 +1912,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
