@@ -30,6 +30,7 @@ async function initDashboard() {
   initCharts();
   await loadSettings(); // loads models, specs, and settings
   pollStatus();         // one immediate fetch on load
+  initCloudAuth();      // bind cloud login listener safely
   loadWeekData();
   
   // Poll every fastPollInterval (default 2s)
@@ -811,4 +812,3 @@ function initCloudAuth() {
   });
 }
 
-window.addEventListener('load', () => setTimeout(initCloudAuth, 500));

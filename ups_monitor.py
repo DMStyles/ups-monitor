@@ -1679,8 +1679,24 @@ def api_set_supabase_token():
     if access_token:
         try:
             import supabase_sync
-            supabase_sync.set_supabase_session(access_token, refresh_token)
-            log.info("Supabase session updated from frontend")
+            if supabase_sync.set_supabase_session(access_token, refresh_token):
+                # Save tokens locally to persist login across restarts
+                settings["supabase_access_token"] = access_token
+                settings["supabase_refresh_token"] = refresh_token
+                save_settings(settings)
+                log.info("Supabase session updated and saved to settings")
+                
+                # Retrieve settings from cloud and merge if any exist
+                cloud_settings = supabase_sync.fetch_settings_from_cloud()
+                if cloud_settings:
+                    for k in ["ups_model", "low_battery_threshold", "auto_shutdown_enabled",
+                              "auto_shutdown_action", "auto_shutdown_pct", "auto_shutdown_mins",
+                              "billing_days", "fast_poll_interval", "db_write_interval",
+                              "notifications_enabled", "ntfy_topic", "battery_replaced_date"]:
+                        if k in cloud_settings and cloud_settings[k] is not None:
+                            settings[k] = cloud_settings[k]
+                    save_settings(settings)
+                    log.info("Merged settings from Supabase cloud backup")
         except Exception as e:
             log.warning(f"supabase_sync.set_supabase_session failed: {e}")
     return jsonify({"ok": True})
@@ -1707,6 +1723,12 @@ def api_cloud_signout():
     try:
         import supabase_sync
         supabase_sync.sign_out_supabase()
+        # Clear persisted tokens from settings
+        if "supabase_access_token" in settings:
+            del settings["supabase_access_token"]
+        if "supabase_refresh_token" in settings:
+            del settings["supabase_refresh_token"]
+        save_settings(settings)
     except Exception as e:
         log.warning(f"Cloud sign-out error: {e}")
     return jsonify({"ok": True})
@@ -1826,11 +1848,17 @@ def main():
     log.info("=" * 60)
     log.info(f"UPS Power Monitor {VERSION} starting…")
     init_db()
+    # Restore Supabase session if credentials are saved
     try:
         import supabase_sync
+        access = settings.get("supabase_access_token")
+        refresh = settings.get("supabase_refresh_token")
+        if access and refresh:
+            log.info("Restoring Supabase session from settings...")
+            supabase_sync.set_supabase_session(access, refresh)
         supabase_sync.start_sync_thread(str(DB_PATH))
     except Exception as e:
-        log.error(f"Failed to start supabase sync thread: {e}")
+        log.error(f"Failed to restore session or start supabase sync thread: {e}")
 
     threading.Thread(target=fast_poll_loop, daemon=True).start()
     threading.Thread(target=db_write_loop,  daemon=True).start()
@@ -1907,7 +1935,7 @@ def main():
             except Exception as e:
                 log.warning(f"Could not set native window icon: {e}")
 
-    webview.start(set_native_icon)
+    webview.start(set_native_icon, debug=True)
 
 
 if __name__ == "__main__":
