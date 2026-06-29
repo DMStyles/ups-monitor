@@ -113,8 +113,16 @@ def sync_readings(db_path):
         rows = c.fetchall()
         
     for r in rows[::-1]:
+        ts = r[0]
+        try:
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                ts = dt.astimezone().isoformat()
+        except Exception:
+            pass
+            
         data = {
-            "ts": r[0], "date": r[1], "input_voltage": r[2], "output_voltage": r[3],
+            "ts": ts, "date": r[1], "input_voltage": r[2], "output_voltage": r[3],
             "frequency": r[4], "load_percent": r[5], "watts": r[6], "battery_voltage": r[7],
             "battery_capacity": r[8], "ups_mode": r[9], "temperature": r[10]
         }
