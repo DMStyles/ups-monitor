@@ -455,14 +455,14 @@ async function loadAnalytics() {
       tb.innerHTML = oData.map((o, i) => {
         const start = new Date(o.started_at).toLocaleString();
         const end = o.ended_at ? new Date(o.ended_at).toLocaleString() : 'Ongoing';
-        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : 'Ã¢â‚¬â€';
+        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : '-';
         return `<tr>
           <td>${oData.length - i}</td>
           <td>${start}</td>
           <td>${end}</td>
           <td>${dur}</td>
           <td style="color:var(--accent)">${o.battery_at_start}%</td>
-          <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : 'Ã¢â‚¬â€'}</td>
+          <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : '-'}</td>
           <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
         </tr>`;
       }).join('');
@@ -487,11 +487,11 @@ function updateBatteryHealthUI(h) {
   const pickerEl = document.getElementById('bh-date-picker');
 
   if (!h || h.status === 'no_data' || h.health_pct === null) {
-    pctEl.innerText = 'Ã¢â‚¬â€%';
+    pctEl.innerText = '-%';
     badgeEl.className = 'bh-status-badge bh-status-nodata';
     badgeEl.innerText = 'No Data';
-    avgVEl.innerText = 'Ã¢â‚¬â€';
-    ageEl.innerText = 'Ã¢â‚¬â€';
+    avgVEl.innerText = '-';
+    ageEl.innerText = '-';
     if (pickerEl) pickerEl.value = h ? h.replaced_date : '';
     return;
   }
@@ -576,7 +576,7 @@ async function loadBillEstimate() {
     // Tier breakdown rows
     const tierContainer = document.getElementById('bill-tier-rows');
     tierContainer.innerHTML = bill.breakdown.map(tier => {
-      const label = `LKR ${tier.rate.toFixed(2)} Ãƒâ€” ${tier.units.toFixed(2)} units`;
+      const label = `LKR ${tier.rate.toFixed(2)} &times; ${tier.units.toFixed(2)} units`;
       return `
         <div class="bill-tier-row">
           <span class="bill-tier-label">${label}</span>
@@ -616,7 +616,7 @@ async function showDailyDetail(dateStr) {
     const samples = data.reduce((s, r) => s + r.samples, 0);
     
     document.getElementById('d-kwh').innerText = kwh.toFixed(3);
-    document.getElementById('d-peak').innerText = peak > 0 ? peak : 'Ã¢â‚¬â€';
+    document.getElementById('d-peak').innerText = peak > 0 ? peak : '-';
     document.getElementById('d-avg').innerText = avg.toFixed(1);
     document.getElementById('d-readings').innerText = samples;
     
