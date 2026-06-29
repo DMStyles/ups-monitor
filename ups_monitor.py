@@ -1,4 +1,4 @@
-"""
+﻿"""
 UPS Power Monitor v1.5.0
 Standalone Windows desktop app — monitors UPS directly via USB HID (Megatec/Voltronic protocol).
 Features: real-time dashboard, analytics, battery health tracker, on-battery warning theme,
@@ -1935,7 +1935,7 @@ def main():
             except Exception as e:
                 log.warning(f"Could not set native window icon: {e}")
 
-    webview.start(set_native_icon, debug=True)
+    webview.start(set_native_icon)
 
 
 if __name__ == "__main__":
