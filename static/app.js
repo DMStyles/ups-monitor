@@ -37,6 +37,8 @@ async function initDashboard() {
   setInterval(pollStatus, fastPollInterval);
   // week data refreshes every 5 mins
   setInterval(loadWeekData, 300000);
+  // Poll cloud status every 30s to update the last sync time
+  setInterval(loadCloudProfile, 30000);
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -128,9 +130,15 @@ async function loadCloudProfile() {
         avatar.style.display = 'none';
         if (fallback) fallback.style.display = 'flex';
       }
-      const now = new Date();
-      document.getElementById('cloud-last-sync').innerText =
-        now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const lastSyncEl = document.getElementById('cloud-last-sync');
+      if (lastSyncEl) {
+        if (u.last_sync) {
+          lastSyncEl.innerText = u.last_sync;
+        } else {
+          const now = new Date();
+          lastSyncEl.innerText = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        }
+      }
     } else {
       notIn.style.display = '';
       signedIn.style.display = 'none';

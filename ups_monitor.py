@@ -1,4 +1,4 @@
-﻿"""
+"""
 UPS Power Monitor v1.5.0
 Standalone Windows desktop app — monitors UPS directly via USB HID (Megatec/Voltronic protocol).
 Features: real-time dashboard, analytics, battery health tracker, on-battery warning theme,
@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.3"
+VERSION = "v2.0.4"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1712,9 +1712,10 @@ def api_cloud_user():
             "name":       supabase_sync.user_name  or "",
             "email":      supabase_sync.user_email or "",
             "avatar_url": supabase_sync.user_avatar or "",
+            "last_sync":  supabase_sync.last_sync_time or "",
         })
     except Exception as e:
-        return jsonify({"signed_in": False, "name": "", "email": "", "avatar_url": ""})
+        return jsonify({"signed_in": False, "name": "", "email": "", "avatar_url": "", "last_sync": ""})
 
 
 @flask_app.route("/api/cloud_signout", methods=["POST"])

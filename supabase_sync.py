@@ -86,14 +86,17 @@ def sync_settings_to_cloud(settings_dict):
         log.warning(f"Failed to sync settings to Supabase: {e}")
 
 
+last_sync_time = None
+
 def sync_worker(db_path):
-    global sync_enabled
+    global sync_enabled, last_sync_time
     while True:
         if sync_enabled:
             try:
                 sync_readings(db_path)
                 sync_outages(db_path)
                 sync_bills(db_path)
+                last_sync_time = datetime.now().strftime("%I:%M %p")
             except Exception as e:
                 log.error(f"Cloud sync error: {e}")
         time.sleep(60) # Sync every 60 seconds

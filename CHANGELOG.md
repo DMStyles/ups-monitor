@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.4 — Real-Time Cloud Sync Tracking (2026-06-29)
+
+### 🚀 Features & Fixes
+- **Real-time Sync Time**: Integrated active timestamp updates in the background worker. The settings page cloud account card now displays the actual last sync completion time dynamically rather than a stale login timestamp.
+
+---
+
 ## v2.0.3 — Profile Picture Fallback & Referrer Fix (2026-06-29)
 
 ### 🐛 Fixes

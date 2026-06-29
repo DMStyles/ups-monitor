@@ -1,9 +1,9 @@
-﻿; UPS Power Monitor — Inno Setup Script
+; UPS Power Monitor — Inno Setup Script
 ; Creates a professional Windows installer for v2.0.0
 ; -------------------------------------------------------
 
 #define MyAppName "UPS Power Monitor"
-#define MyAppVersion "2.0.3"
+#define MyAppVersion "2.0.4"
 #define MyAppPublisher "DMStyles"
 #define MyAppURL "https://github.com/DMStyles/ups-monitor"
 #define MyAppExeName "UPS Power Monitor.exe"
