@@ -172,7 +172,7 @@ def sync_daily_stats(db_path):
     MAX_GAP = 300  # seconds — skip gaps longer than 5 mins (app was off)
     today = date.today()
     
-    for day_offset in range(8):
+    for day_offset in range(32):
         target = (today - timedelta(days=day_offset)).isoformat()
         try:
             with sqlite3.connect(db_path) as conn:
