@@ -679,14 +679,16 @@ async function manualCheckUpdate() {
   try {
     const res = await fetch('/api/check_update');
     const data = await res.json();
-    if (data.update_available) {
-      msg.innerHTML = `Update <strong>${data.latest_version}</strong> available! <button onclick="performUpdateFromSettings()" class="settings-btn settings-btn-primary" style="padding:4px 10px; margin-left:10px; font-size:0.8rem;">Install Now</button>`;
+    if (data.error && !data.update_available) {
+      msg.innerHTML = `⚠️ ${data.error} &mdash; <a href="https://github.com/DMStyles/ups-monitor/releases/latest" target="_blank" style="color:#00b4ff;">Check manually on GitHub</a>`;
+    } else if (data.update_available) {
+      msg.innerHTML = `🚀 Update <strong>${data.latest_version}</strong> is available! <button onclick="performUpdateFromSettings()" class="settings-btn settings-btn-primary" style="padding:4px 10px; margin-left:10px; font-size:0.8rem;">Install Now</button>`;
       updateUrl = data.download_url;
     } else {
-      msg.innerText = `You are on the latest version (${data.current_version}).`;
+      msg.innerText = `✓ You are on the latest version (${data.current_version}).`;
     }
   } catch (err) {
-    msg.innerText = "Failed to check for updates.";
+    msg.innerHTML = `⚠️ Could not reach update server. <a href="https://github.com/DMStyles/ups-monitor/releases/latest" target="_blank" style="color:#00b4ff;">Check manually on GitHub</a>`;
   }
   btn.disabled = false;
 }

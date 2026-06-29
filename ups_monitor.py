@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.5"
+VERSION = "v2.0.6"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1509,34 +1509,48 @@ def check_update():
     try:
         r = requests.get(
             "https://api.github.com/repos/DMStyles/ups-monitor/releases/latest",
-            headers={"User-Agent": "UPS-Monitor"}, timeout=5)
-        if r.status_code == 200:
-            j   = r.json()
-            tag = j.get("tag_name", VERSION)
+            headers={
+                "User-Agent": "UPS-Monitor",
+                "Accept":     "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=10)
 
-            def pv(v):
-                return [int(x) for x in re.sub(r"[^\d.]", "", v).split(".")]
-
-            try:
-                update_available = pv(tag) > pv(VERSION)
-            except Exception:
-                update_available = tag != VERSION
-
-            dl_url = next(
-                (a["browser_download_url"] for a in j.get("assets", [])
-                 if a["name"].endswith(".exe")),
-                j.get("zipball_url"))
-
+        if r.status_code != 200:
+            log.warning(f"Update check: GitHub returned HTTP {r.status_code}")
             return jsonify({
-                "update_available": update_available,
-                "latest_version":   tag,
+                "update_available": False,
                 "current_version":  VERSION,
-                "changelog":        j.get("body", ""),
-                "download_url":     dl_url,
+                "error": f"GitHub returned HTTP {r.status_code}. Try again in a moment."
             })
+
+        j   = r.json()
+        tag = j.get("tag_name", VERSION)
+
+        def pv(v):
+            parts = re.sub(r"[^\d.]", "", v).split(".")
+            return [int(x) for x in parts if x]
+
+        try:
+            update_available = pv(tag) > pv(VERSION)
+        except Exception:
+            update_available = tag.strip().lstrip("v") != VERSION.strip().lstrip("v")
+
+        dl_url = next(
+            (a["browser_download_url"] for a in j.get("assets", [])
+             if a["name"].endswith(".exe")),
+            j.get("zipball_url"))
+
+        return jsonify({
+            "update_available": update_available,
+            "latest_version":   tag,
+            "current_version":  VERSION,
+            "changelog":        j.get("body", ""),
+            "download_url":     dl_url,
+        })
     except Exception as e:
         log.error(f"Update check error: {e}")
-    return jsonify({"update_available": False, "current_version": VERSION})
+    return jsonify({"update_available": False, "current_version": VERSION, "error": str(e)})
 
 
 @flask_app.route("/api/ups/action", methods=["POST"])
