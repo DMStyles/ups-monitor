@@ -96,6 +96,7 @@ def sync_worker(db_path):
                 sync_readings(db_path)
                 sync_outages(db_path)
                 sync_bills(db_path)
+                sync_daily_stats(db_path)
                 last_sync_time = datetime.now().strftime("%I:%M %p")
             except Exception as e:
                 log.error(f"Cloud sync error: {e}")
@@ -156,6 +157,58 @@ def sync_bills(db_path):
             supabase.table("ceb_bills").upsert(data).execute()
         except Exception:
             pass
+
+def sync_daily_stats(db_path):
+    """Compute last 8 days of kWh and push to Supabase daily_stats table."""
+    from datetime import date, timedelta
+    MAX_GAP = 300  # seconds — skip gaps longer than 5 mins (app was off)
+    today = date.today()
+    
+    for day_offset in range(8):
+        target = (today - timedelta(days=day_offset)).isoformat()
+        try:
+            with sqlite3.connect(db_path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT watts, ts FROM readings WHERE date=? ORDER BY ts ASC", (target,))
+                rows = c.fetchall()
+            
+            if not rows:
+                continue
+            
+            kwh = 0.0
+            for i in range(1, len(rows)):
+                w0, t0 = rows[i - 1]
+                _,  t1 = rows[i]
+                try:
+                    t0_dt = datetime.fromisoformat(t0)
+                    t1_dt = datetime.fromisoformat(t1)
+                    if t0_dt.tzinfo is None:
+                        t0_dt = t0_dt.replace(tzinfo=__import__('datetime').timezone.utc)
+                    if t1_dt.tzinfo is None:
+                        t1_dt = t1_dt.replace(tzinfo=__import__('datetime').timezone.utc)
+                    dt = (t1_dt - t0_dt).total_seconds()
+                except Exception:
+                    dt = 0
+                if 0 < dt <= MAX_GAP:
+                    kwh += (float(w0) / 1000.0) * (dt / 3600.0)
+            
+            data = {
+                "date": target,
+                "kwh": round(kwh, 4),
+                "samples": len(rows),
+                "updated_at": datetime.utcnow().isoformat() + "Z"
+            }
+            # Try to compute cost using the desktop's own calc_ceb_bill
+            try:
+                from ups_monitor import get_daily_stats as _gds
+                day_stat = _gds(target)
+                data["cost_lkr"] = day_stat.get("cost_lkr", 0.0)
+            except Exception:
+                pass
+            supabase.table("daily_stats").upsert(data, on_conflict="user_id,date").execute()
+            log.info(f"Synced daily_stats for {target}: {kwh:.4f} kWh")
+        except Exception as e:
+            log.warning(f"sync_daily_stats error for {target}: {e}")
 
 def start_sync_thread(db_path):
     t = threading.Thread(target=sync_worker, args=(db_path,), daemon=True)
