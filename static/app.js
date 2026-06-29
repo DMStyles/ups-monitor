@@ -1,4 +1,4 @@
-﻿let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltChart;
+let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltChart;
 let globalMaxWatts = 840;
 let fastPollInterval = 2000;
 let currentMonth = new Date().toISOString().slice(0, 7);
@@ -128,6 +128,7 @@ async function signOutCloud() {
   if (!confirm('Sign out of Cloud Sync?')) return;
   try {
     await fetch('/api/cloud_signout', { method: 'POST' });
+    // Reset header button
     const btnCloud = document.getElementById('btn-cloud-login');
     if (btnCloud) {
       btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
@@ -135,6 +136,14 @@ async function signOutCloud() {
       btnCloud.style.color = '';
       btnCloud.disabled = false;
     }
+    // Reset Settings card sign-in button
+    const btnGoog = document.getElementById('btn-signin-google');
+    if (btnGoog) {
+      btnGoog.disabled = false;
+      btnGoog.innerText = 'Sign in with Google';
+    }
+    // Allow profile to reload on next login
+    window._cloudProfileLoaded = false;
     loadCloudProfile();
   } catch(e) { console.warn('signOutCloud error', e); }
 }
@@ -347,6 +356,16 @@ function applyStatus(d) {
         btnCloud.style.background = 'rgba(0,229,160,0.5)';
         btnCloud.style.color = '#fff';
         btnCloud.disabled = true;
+        // Reset the Settings card sign-in button and show profile
+        var btnGoog = document.getElementById('btn-signin-google');
+        if (btnGoog && (btnGoog.innerText.includes('Waiting') || btnGoog.innerText.includes('Opening'))) {
+          btnGoog.disabled = false;
+          btnGoog.innerText = 'Sign in with Google';
+        }
+        if (typeof loadCloudProfile === 'function' && !window._cloudProfileLoaded) {
+          window._cloudProfileLoaded = true;
+          loadCloudProfile();
+        }
       } else {
         if (!btnCloud.innerText.includes('Opening') && !btnCloud.innerText.includes('Waiting')) {
           btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
