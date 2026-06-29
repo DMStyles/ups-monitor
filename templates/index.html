@@ -37,6 +37,7 @@
         </div>
       </div>
       <div class="header-right">
+        <button id="btn-cloud-login" class="btn" style="margin-right:15px; font-size:0.8rem; padding: 6px 12px; background: rgba(0, 229, 160, 0.15); border: 1px solid var(--accent); color: var(--accent);"><i class="ph ph-cloud"></i> Sign in to Cloud</button>
         <div id="status-badge" class="status-badge status-connecting">
           <span class="status-dot"></span>
           <span id="status-text">Connecting…</span>
@@ -519,7 +520,7 @@
           <h2 class="card-title">☁️ Cloud Account</h2>
           <div id="cloud-not-signed-in">
             <p style="color:var(--text-dim); font-size:0.875rem; margin:0 0 14px 0;">Sign in to sync your data and settings across devices.</p>
-            <button class="settings-btn settings-btn-primary" style="width:100%;" onclick="document.getElementById('btn-cloud-login').click()">
+            <button class="settings-btn settings-btn-primary" style="width:100%;" onclick="signInCloud()">
               Sign in with Google
             </button>
           </div>

@@ -787,28 +787,52 @@ function sendUpsAction(action) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CLOUD SYNC (Initiated via Backend OAuth Callback)
 // ─────────────────────────────────────────────────────────────────────────────
-function initCloudAuth() {
+async function signInCloud() {
   const btnCloud = document.getElementById('btn-cloud-login');
-  if (!btnCloud) return;
-
-  btnCloud.addEventListener('click', async () => {
-    try {
+  const btnSettings = document.querySelector('#cloud-not-signed-in .settings-btn-primary');
+  
+  try {
+    if (btnCloud) {
       btnCloud.disabled = true;
       btnCloud.innerText = 'Opening browser...';
-      const res = await fetch('/api/cloud/login', { method: 'POST' });
-      const data = await res.json();
-      if (data.ok) {
-        btnCloud.innerText = 'Waiting for sign-in...';
-      } else {
+    }
+    if (btnSettings) {
+      btnSettings.disabled = true;
+      btnSettings.innerText = 'Opening browser...';
+    }
+
+    const res = await fetch('/api/cloud/login', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      if (btnCloud) btnCloud.innerText = 'Waiting for sign-in...';
+      if (btnSettings) btnSettings.innerText = 'Waiting for sign-in...';
+    } else {
+      if (btnCloud) {
         btnCloud.disabled = false;
         btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
-        alert('Failed to initiate login.');
       }
-    } catch (e) {
-      console.warn('Cloud login error', e);
+      if (btnSettings) {
+        btnSettings.disabled = false;
+        btnSettings.innerText = 'Sign in with Google';
+      }
+      alert('Failed to initiate login.');
+    }
+  } catch (e) {
+    console.warn('Cloud login error', e);
+    if (btnCloud) {
       btnCloud.disabled = false;
       btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
     }
-  });
+    if (btnSettings) {
+      btnSettings.disabled = false;
+      btnSettings.innerText = 'Sign in with Google';
+    }
+  }
 }
 
+function initCloudAuth() {
+  const btnCloud = document.getElementById('btn-cloud-login');
+  if (btnCloud) {
+    btnCloud.addEventListener('click', signInCloud);
+  }
+}
