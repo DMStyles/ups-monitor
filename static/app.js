@@ -108,11 +108,25 @@ async function loadCloudProfile() {
       document.getElementById('cloud-name').innerText  = u.name  || u.email;
       document.getElementById('cloud-email').innerText = u.email || '';
       const avatar = document.getElementById('cloud-avatar');
+      const fallback = document.getElementById('cloud-avatar-fallback');
+      const name = u.name || u.email || 'U';
+      const firstLetter = name.trim().charAt(0);
+      if (fallback) {
+        fallback.innerText = firstLetter;
+      }
       if (u.avatar_url) {
         avatar.src = u.avatar_url;
-        avatar.style.display = '';
+        avatar.onload = () => {
+          avatar.style.display = '';
+          if (fallback) fallback.style.display = 'none';
+        };
+        avatar.onerror = () => {
+          avatar.style.display = 'none';
+          if (fallback) fallback.style.display = 'flex';
+        };
       } else {
         avatar.style.display = 'none';
+        if (fallback) fallback.style.display = 'flex';
       }
       const now = new Date();
       document.getElementById('cloud-last-sync').innerText =
