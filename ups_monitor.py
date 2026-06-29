@@ -1,5 +1,5 @@
 """
-UPS Power Monitor v1.5.0
+UPS Power Monitor v2.0.5
 Standalone Windows desktop app — monitors UPS directly via USB HID (Megatec/Voltronic protocol).
 Features: real-time dashboard, analytics, battery health tracker, on-battery warning theme,
           dynamic CEB bill estimator (D-2026/05 tariff), outage log, auto-updater, tray icon.
@@ -17,7 +17,7 @@ import logging
 import threading
 import subprocess
 import winreg
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 
@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.4"
+VERSION = "v2.0.5"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -391,12 +391,22 @@ def init_db():
             last_reading = c.fetchone()
             if last_reading:
                 end_ts, bat_end = last_reading
-                duration = int((datetime.fromisoformat(end_ts) - datetime.fromisoformat(started_at)).total_seconds())
+                start_dt = datetime.fromisoformat(started_at)
+                end_dt = datetime.fromisoformat(end_ts)
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                if end_dt.tzinfo is None:
+                    end_dt = end_dt.replace(tzinfo=timezone.utc)
+                duration = int((end_dt - start_dt).total_seconds())
                 duration = max(0, duration)
             else:
-                end_ts = datetime.now().isoformat()
+                now_utc = datetime.now(timezone.utc)
+                end_ts = now_utc.isoformat()
                 bat_end = None
-                duration = int((datetime.now() - datetime.fromisoformat(started_at)).total_seconds())
+                start_dt = datetime.fromisoformat(started_at)
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                duration = int((now_utc - start_dt).total_seconds())
             
             c.execute("""UPDATE outages SET ended_at=?, duration_seconds=?, battery_at_end=?
                          WHERE id=?""", (end_ts, duration, bat_end, oid))
@@ -436,7 +446,7 @@ def record_outage_start(battery_pct: int) -> int | None:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("INSERT INTO outages (started_at, battery_at_start) VALUES (?, ?)",
-                  (datetime.now().isoformat(), battery_pct))
+                  (datetime.now(timezone.utc).isoformat(), battery_pct))
         _outage_row_id = c.lastrowid
         conn.commit()
         conn.close()
@@ -454,10 +464,14 @@ def record_outage_end(battery_pct: int):
         c.execute("SELECT started_at FROM outages WHERE id=?", (_outage_row_id,))
         row = c.fetchone()
         if row:
-            duration = int((datetime.now() - datetime.fromisoformat(row[0])).total_seconds())
+            start_dt = datetime.fromisoformat(row[0])
+            now_utc = datetime.now(timezone.utc)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            duration = int((now_utc - start_dt).total_seconds())
             c.execute("""UPDATE outages SET ended_at=?, duration_seconds=?, battery_at_end=?
                          WHERE id=?""",
-                      (datetime.now().isoformat(), duration, battery_pct, _outage_row_id))
+                      (now_utc.isoformat(), duration, battery_pct, _outage_row_id))
             conn.commit()
         conn.close()
     except Exception as e:
