@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.0.3 — Profile Picture Fallback & Referrer Fix (2026-06-29)
+
+### 🐛 Fixes
+- **Google Profile Image:** Added `referrerpolicy="no-referrer"` to the profile picture image tag. This bypasses Google's request blocks on embedded WebView2 contexts, allowing the profile image to load normally.
+- **Premium Fallback Avatar:** Added a circular CSS gradient fallback. If Google's profile image server is slow or fails to load, the app now automatically hides the broken icon and displays the first letter of your name ("D" for Dilshan) inside a clean, modern color gradient circle.
+
+---
+
+## v2.0.2 — Unicode Encoding & Layout Fixes (2026-06-29)
+
+### 🐛 Fixes
+- **Encoding Issues:** Replaced all Unicode en-dash (`–`) and multiplication (`×`) characters with HTML entities (`&times;`) and standard ASCII characters (`-`). They will now render correctly under all configurations without encoding mangling (e.g. fixing the garbled `Ãfâ€”` text in the CEB Bill Estimator).
+- **Context Menu:** Blocked the default browser right-click context menu inside the WebView2 container completely.
+
+---
+
+## v2.0.1 — Cloud Flow & Layout Cleanup (2026-06-28)
+
+### 🐛 Fixes
+- **Settings Card Auto-Update:** The profile card now detects the active session and switches from "Waiting for sign-in..." to your profile (name, email, avatar) automatically.
+- **Header Button Sync:** Both the header "Cloud Synced" button and the Settings card "Sign in with Google" button reset properly on sign-out.
+
+---
+
 ## v2.0.0 — Cloud Sync & Profile Update (2026-06-28)
 
 ### ✨ New Features
