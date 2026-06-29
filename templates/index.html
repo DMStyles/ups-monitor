@@ -38,7 +38,8 @@
         </div>
       </div>
       <div class="header-right">
-        <button id="btn-cloud-login" class="btn" style="margin-right:15px; font-size:0.8rem; padding: 6px 12px; background: rgba(0, 229, 160, 0.15); border: 1px solid var(--accent); color: var(--accent);"><i class="ph ph-cloud"></i> Sign in to Cloud</button>
+        <button id="btn-cloud-login" class="btn" style="margin-right:15px; font-size:0.8rem; padding: 6px 12px; background: rgba(0, 229, 160, 0.15); border: 1px solid var(--accent); color: var(--accent);"
+          onclick="var b=this;b.disabled=true;b.innerText='Opening browser...';fetch('/api/cloud/login',{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d.ok){b.innerText='Waiting for sign-in...';}else{b.disabled=false;b.innerHTML='<i class=ph ph-cloud></i> Sign in to Cloud';}}).catch(function(){b.disabled=false;b.innerHTML='<i class=ph ph-cloud></i> Sign in to Cloud';});"><i class="ph ph-cloud"></i> Sign in to Cloud</button>
         <div id="status-badge" class="status-badge status-connecting">
           <span class="status-dot"></span>
           <span id="status-text">Connecting…</span>
@@ -521,7 +522,8 @@
           <h2 class="card-title">☁️ Cloud Account</h2>
           <div id="cloud-not-signed-in">
             <p style="color:var(--text-dim); font-size:0.875rem; margin:0 0 14px 0;">Sign in to sync your data and settings across devices.</p>
-            <button class="settings-btn settings-btn-primary" style="width:100%;" onclick="signInCloud()">
+            <button id="btn-signin-google" class="settings-btn settings-btn-primary" style="width:100%;"
+              onclick="var b=this;b.disabled=true;b.innerText='Opening browser...';fetch('/api/cloud/login',{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d.ok){b.innerText='Waiting for sign-in...';}else{b.disabled=false;b.innerText='Sign in with Google';}}).catch(function(){b.disabled=false;b.innerText='Sign in with Google';});">
               Sign in with Google
             </button>
           </div>
