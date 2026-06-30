@@ -10,13 +10,16 @@ from pathlib import Path
 
 SRC = Path(".")
 
+import site
+# Find the site-packages directory dynamically so this works on GitHub Actions too
+site_packages = site.getsitepackages()[1] if len(site.getsitepackages()) > 1 else site.getsitepackages()[0]
+hid_pyd = next(Path(site_packages).glob("hid.*.pyd"), None)
+binaries = [(str(hid_pyd), ".")] if hid_pyd else []
+
 a = Analysis(
     [str(SRC / "ups_monitor.py")],
     pathex=[str(SRC)],
-    binaries=[
-        # Include the hidapi compiled extension directly
-        (r"C:\Users\dilsh\AppData\Local\Programs\Python\Python312\Lib\site-packages\hid.cp312-win_amd64.pyd", "."),
-    ],
+    binaries=binaries,
     datas=[
         # Include HTML templates and static assets
         (str(SRC / "templates"), "templates"),
