@@ -23,7 +23,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flask requests pywebview pystray pillow beautifulsoup4 pyinstaller
+          pip install -r requirements.txt
+          pip install pyinstaller
 
       - name: Build with PyInstaller
         run: |
@@ -54,58 +55,6 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: UPS Power Monitor ${{ github.ref_name }}
-          body: |
-            ## UPS Power Monitor ${{ github.ref_name }}
-
-            ### 🚀 What's New in v1.4.0
-
-            #### 🔋 Battery Health Tracker
-            - New **Battery Health** card in the Analytics tab showing health percentage, color-coded status (Good / Fair / Replace), and battery age in days
-            - Set the **battery replacement date** directly from the Settings tab — health score updates automatically
-            - Smart health score algorithm accounting for battery age, average load, and discharge cycles
-            - Automatic **ntfy.sh push notifications** and **tray alerts** when battery health falls below warning thresholds
-
-            #### 🧾 Dynamic CEB Bill Calculator
-            - Full **D-2026/05 tariff structure** implementation matching the latest Ceylon Electricity Board rate slabs
-            - Fixed charge now **automatically adjusts** based on your total consumption (no more static fixed fee)
-            - Itemised bill breakdown showing each slab, units used per slab, and sub-totals
-            - Auto-hides the Temperature tile in the Vitals grid for UPS models that don't report temperature
-
-            #### 🎨 Premium UI Refresh
-            - Smooth **tab transition animations** — pages slide/fade when switching tabs
-            - **Micro-animations** on cards, buttons, stat tiles, and inputs (hover lift, glow focus rings)
-            - Custom **scrollbar styling** and polished form controls throughout
-            - All modals and dropdowns now animate in and out
-
-            #### ⚡ On-Battery Warning Theme
-            - When the UPS switches to **battery power**, the entire UI shifts to an **amber/red warning theme**
-            - Pulsing vignette border around the viewport signals battery mode at a glance
-            - Alert glows and accent colours shift to warn colours — instantly recognisable even at a distance
-            - Reverts automatically to normal theme when mains power is restored
-
-            #### 🐛 Bug Fixes
-            - Prevented scroll-wheel from accidentally changing number inputs (fixes electricity rate drift)
-            - Added server-side validation for all settings to prevent invalid values being saved
-            - Fixed empty space left when the Temperature tab/tile was hidden
-            - Filtered out spurious `0.0 °C` temperature readings from unsupported models
-
-            ---
-
-            ### Installation
-            1. Download `UPS-Power-Monitor-Setup-*.exe` below
-            2. Run the installer — it handles everything automatically
-            3. UPS Power Monitor will start after installation
-
-            ### Requirements
-            - Windows 10 / 11 (64-bit)
-            - Microsoft Edge WebView2 Runtime (pre-installed on Win10 20H2+)
-            - ViewPower software running on the same machine
-
-            ### What's included
-            - Standalone app (no Python required)
-            - Desktop shortcut
-            - Optional autostart at login
-            - Built-in auto-updater — checks GitHub for new releases
           files: |
             release/UPS-Power-Monitor-Setup-*.exe
           draft: false
