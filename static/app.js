@@ -727,6 +727,8 @@ async function performUpdate() {
 function initCharts() {
   const commonOpts = {
     responsive: true, maintainAspectRatio: false,
+    animation: false, // Disable animations to save GPU during live data updates
+    devicePixelRatio: 1, // Cap pixel ratio to save GPU rasterization cost
     plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
     scales: {
       y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true },
