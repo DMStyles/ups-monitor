@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -38,8 +38,9 @@
         </div>
       </div>
       <div class="header-right">
-        <button id="btn-cloud-login" class="btn" style="margin-right:15px; font-size:0.8rem; padding: 6px 12px; background: rgba(0, 229, 160, 0.15); border: 1px solid var(--accent); color: var(--accent);"
-          onclick="var b=this;b.disabled=true;b.innerText='Opening browser...';fetch('/api/cloud/login',{method:'POST'}).then(function(r){return r.json();}).then(function(d){if(d.ok){b.innerText='Waiting for sign-in...';}else{b.disabled=false;b.innerHTML='<i class=ph ph-cloud></i> Sign in to Cloud';}}).catch(function(){b.disabled=false;b.innerHTML='<i class=ph ph-cloud></i> Sign in to Cloud';});"><i class="ph ph-cloud"></i> Sign in to Cloud</button>
+        <button id="btn-cloud-login" class="btn" style="margin-right:15px; font-size:0.8rem; padding: 6px 12px; background: rgba(0, 229, 160, 0.15); border: 1px solid var(--accent); color: var(--accent);">
+          <i class="ph ph-cloud"></i> Sign in to Cloud
+        </button>
         <div id="status-badge" class="status-badge status-connecting">
           <span class="status-dot"></span>
           <span id="status-text">Connecting…</span>
