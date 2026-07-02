@@ -16,6 +16,13 @@ sync_enabled = False
 user_name = None
 user_email = None
 user_avatar = None
+auth_callback = None
+
+def _on_auth_change(event, session):
+    if auth_callback and session:
+        auth_callback(session.access_token, session.refresh_token)
+
+supabase.auth.on_auth_state_change(_on_auth_change)
 
 def set_supabase_session(access_token, refresh_token):
     global sync_enabled, user_name, user_email, user_avatar

@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.10"
+VERSION = "v2.0.11"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1880,6 +1880,16 @@ def main():
     # Restore Supabase session if credentials are saved
     try:
         import supabase_sync
+        
+        def save_refreshed_tokens(access, refresh):
+            if access and refresh and (settings.get("supabase_access_token") != access or settings.get("supabase_refresh_token") != refresh):
+                settings["supabase_access_token"] = access
+                settings["supabase_refresh_token"] = refresh
+                save_settings(settings)
+                log.info("Supabase tokens were automatically refreshed and saved.")
+        
+        supabase_sync.auth_callback = save_refreshed_tokens
+        
         access = settings.get("supabase_access_token")
         refresh = settings.get("supabase_refresh_token")
         if access and refresh:
