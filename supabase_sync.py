@@ -27,7 +27,12 @@ supabase.auth.on_auth_state_change(_on_auth_change)
 def set_supabase_session(access_token, refresh_token):
     global sync_enabled, user_name, user_email, user_avatar
     try:
-        res = supabase.auth.set_session(access_token, refresh_token)
+        try:
+            res = supabase.auth.set_session(access_token, refresh_token)
+        except Exception as e:
+            log.warning(f"set_session failed (likely expired). Attempting manual refresh: {e}")
+            res = supabase.auth.refresh_session(refresh_token)
+
         user = res.user
         if user:
             user_email = user.email
@@ -40,7 +45,7 @@ def set_supabase_session(access_token, refresh_token):
         log.info(f"Supabase session established for {user_email}")
         return True
     except Exception as e:
-        log.error(f"Failed to set Supabase session: {e}")
+        log.error(f"Failed to set/refresh Supabase session: {e}")
         return False
 
 def sign_out_supabase():
