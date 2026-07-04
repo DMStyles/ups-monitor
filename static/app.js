@@ -486,41 +486,35 @@ async function loadAnalytics() {
 }
 
 function renderOutages() {
+  document.getElementById('outage-month-label').innerText = currentOutageMonth;
+  const filtered = allOutages.filter(o => o.started_at.startsWith(currentOutageMonth));
+  document.getElementById('outage-count').innerText = `${filtered.length} outages`;
   const tb = document.getElementById('outage-tbody');
-  document.getElementById('outage-count').innerText = `${allOutages.length} outages`;
-  
-  if (allOutages.length === 0) {
-    tb.innerHTML = '<tr><td colspan="7" class="no-data">No outages recorded</td></tr>';
-    return;
+  if (filtered.length === 0) {
+    tb.innerHTML = '<tr><td colspan="7" class="no-data">No outages recorded in this month</td></tr>';
+  } else {
+    tb.innerHTML = filtered.map((o, i) => {
+      const start = new Date(o.started_at).toLocaleString();
+      const end = o.ended_at ? new Date(o.ended_at).toLocaleString() : 'Ongoing';
+      const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : '- ';
+      return `<tr>
+        <td>${filtered.length - i}</td>
+        <td>${start}</td>
+        <td>${end}</td>
+        <td>${dur}</td>
+        <td style="color:var(--accent)">${o.battery_at_start}%</td>
+        <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : '- '}</td>
+        <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
+      </tr>`;
+    }).join('');
   }
-  
-  let html = '';
-  let currentM = null;
-  
-  allOutages.forEach((o, i) => {
-    const monthStr = o.started_at.substring(0, 7); // YYYY-MM
-    if (monthStr !== currentM) {
-      currentM = monthStr;
-      const mName = new Date(monthStr + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
-      html += `<tr><td colspan="7" style="background: rgba(255,255,255,0.03); font-weight: bold; text-align: left; padding: 12px 16px; color: var(--accent); border-top: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05);">${mName}</td></tr>`;
-    }
-    
-    const start = new Date(o.started_at).toLocaleString();
-    const end = o.ended_at ? new Date(o.ended_at).toLocaleString() : 'Ongoing';
-    const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : '- ';
-    
-    html += `<tr>
-      <td>${allOutages.length - i}</td>
-      <td>${start}</td>
-      <td>${end}</td>
-      <td>${dur}</td>
-      <td style="color:var(--accent)">${o.battery_at_start}%</td>
-      <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : '- '}</td>
-      <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
-    </tr>`;
-  });
-  
-  tb.innerHTML = html;
+}
+
+function changeOutageMonth(delta) {
+  const d = new Date(currentOutageMonth + '-01');
+  d.setMonth(d.getMonth() + delta);
+  currentOutageMonth = d.toISOString().slice(0, 7);
+  renderOutages();
 }
 
 function updateBatteryHealthUI(h) {

@@ -384,6 +384,11 @@
             <h2 class="card-title" style="margin-bottom:0;">⚡ Power Outage Log</h2>
             <span class="outage-count-badge" id="outage-count">0 outages</span>
           </div>
+          <div class="month-controls">
+            <button class="month-nav-btn" onclick="changeOutageMonth(-1)" id="outage-month-prev">&#8249;</button>
+            <span class="month-label" id="outage-month-label">—</span>
+            <button class="month-nav-btn" onclick="changeOutageMonth(1)" id="outage-month-next">&#8250;</button>
+          </div>
         </div>
         <div class="outage-table-wrap">
           <table class="outage-table" id="outage-table">
