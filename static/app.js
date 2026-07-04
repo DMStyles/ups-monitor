@@ -2,6 +2,8 @@ let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltCh
 let globalMaxWatts = 840;
 let fastPollInterval = 2000;
 let currentMonth = new Date().toISOString().slice(0, 7);
+let currentOutageMonth = new Date().toISOString().slice(0, 7);
+let allOutages = [];
 let currentBillMonth = new Date().toISOString().slice(0, 7);
 
 // Chart.js global config
@@ -499,6 +501,38 @@ async function loadAnalytics() {
   
   // Load bill estimator
   loadBillEstimate();
+}
+
+function renderOutages() {
+  document.getElementById('outage-month-label').innerText = currentOutageMonth;
+  const filtered = allOutages.filter(o => o.started_at.startsWith(currentOutageMonth));
+  document.getElementById('outage-count').innerText = `${filtered.length} outages`;
+  const tb = document.getElementById('outage-tbody');
+  if (filtered.length === 0) {
+    tb.innerHTML = '<tr><td colspan="7" class="no-data">No outages recorded in this month</td></tr>';
+  } else {
+    tb.innerHTML = filtered.map((o, i) => {
+      const start = new Date(o.started_at).toLocaleString();
+      const end = o.ended_at ? new Date(o.ended_at).toLocaleString() : 'Ongoing';
+      const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : '- ';
+      return `<tr>
+        <td>${filtered.length - i}</td>
+        <td>${start}</td>
+        <td>${end}</td>
+        <td>${dur}</td>
+        <td style="color:var(--accent)">${o.battery_at_start}%</td>
+        <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : '- '}</td>
+        <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function changeOutageMonth(delta) {
+  const d = new Date(currentOutageMonth + '-01');
+  d.setMonth(d.getMonth() + delta);
+  currentOutageMonth = d.toISOString().slice(0, 7);
+  renderOutages();
 }
 
 function updateBatteryHealthUI(h) {
