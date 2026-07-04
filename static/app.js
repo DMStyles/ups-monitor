@@ -471,26 +471,8 @@ async function loadAnalytics() {
     inputVoltChart.update();
     
     // Outages
-    document.getElementById('outage-count').innerText = `${oData.length} outages`;
-    const tb = document.getElementById('outage-tbody');
-    if (oData.length === 0) {
-      tb.innerHTML = '<tr><td colspan="7" class="no-data">No outages recorded</td></tr>';
-    } else {
-      tb.innerHTML = oData.map((o, i) => {
-        const start = new Date(o.started_at).toLocaleString();
-        const end = o.ended_at ? new Date(o.ended_at).toLocaleString() : 'Ongoing';
-        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : '-';
-        return `<tr>
-          <td>${oData.length - i}</td>
-          <td>${start}</td>
-          <td>${end}</td>
-          <td>${dur}</td>
-          <td style="color:var(--accent)">${o.battery_at_start}%</td>
-          <td style="color:var(--warn)">${o.battery_at_end !== null ? o.battery_at_end+'%' : '-'}</td>
-          <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
-        </tr>`;
-      }).join('');
-    }
+    allOutages = oData;
+    renderOutages();
     
     // Update Battery Health UI
     updateBatteryHealthUI(hData);
