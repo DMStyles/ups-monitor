@@ -92,8 +92,13 @@
           </div>
           <!-- Runtime estimate (only shown on battery) -->
           <div id="runtime-badge" class="runtime-badge" style="display:none;">
-            <span class="runtime-icon">🔋</span>
-            <span>Est. <strong id="runtime-val">—</strong> min remaining</span>
+            <span class="runtime-icon">⏱️</span>
+            <span>Est. <strong id="runtime-val">-</strong> min remaining</span>
+          </div>
+          <!-- Charge time estimate (only shown when charging) -->
+          <div id="chargetime-badge" class="runtime-badge" style="display:none; color: #10b981; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05);">
+            <span class="runtime-icon" style="color: #10b981;">⚡</span>
+            <span>Est. <strong id="chargetime-val">-</strong> to full charge</span>
           </div>
         </section>
 

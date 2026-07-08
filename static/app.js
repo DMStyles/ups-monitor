@@ -362,6 +362,13 @@ function applyStatus(d) {
       } else {
         document.getElementById('runtime-badge').style.display = 'none';
       }
+
+      if (d.charge_time_estimate !== null) {
+        document.getElementById('chargetime-badge').style.display = 'flex';
+        document.getElementById('chargetime-val').innerText = d.charge_time_estimate;
+      } else {
+        document.getElementById('chargetime-badge').style.display = 'none';
+      }
     } else {
       document.body.classList.remove('on-battery-theme');
       document.getElementById('battery-alert').style.display = 'none';

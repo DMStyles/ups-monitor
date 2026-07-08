@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.24"
+VERSION = "v2.0.25"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -981,6 +981,12 @@ def fast_poll_loop():
                     watts  = round(cfg["max_watts"] * (data["load_percent"] / 100.0), 1)
                     on_bat = "battery" in (data.get("ups_mode") or "").lower()
                     rt     = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
+                    ct     = None
+                    
+                    if not on_bat and data["battery_capacity"] < 100:
+                        # Estimate roughly 6 hours (360 mins) to full charge from 0%
+                        mins_to_full = int((100 - data["battery_capacity"]) * 3.6)
+                        ct = f"{mins_to_full // 60}h {mins_to_full % 60}m"
 
                     # ── Outage detection ──────────────────────
                     if on_bat and not _last_on_battery:
@@ -996,6 +1002,10 @@ def fast_poll_loop():
                                   f"({data['battery_capacity']}% remaining).",
                                   "danger"),
                             daemon=True).start()
+                        
+                        # Auto-open dashboard
+                        import webbrowser
+                        webbrowser.open("http://127.0.0.1:5000")
 
                     elif not on_bat and _last_on_battery:
                         record_outage_end(data["battery_capacity"])
@@ -1048,6 +1058,17 @@ def fast_poll_loop():
                                 args=("⚠️ AUTO-SHUTDOWN INITIATED",
                                       f"{reason}. Windows will {action_text} in 60 seconds. Save your work immediately!",
                                       "danger"),
+                                daemon=True).start()
+                                
+                            # Force a native Windows message box on top of everything (including full-screen games)
+                            import ctypes
+                            threading.Thread(
+                                target=lambda: ctypes.windll.user32.MessageBoxW(
+                                    0, 
+                                    f"{reason}.\n\nWindows will {action_text} in 60 seconds!\n\nSave your work immediately!", 
+                                    "UPS Auto-Shutdown Initiated", 
+                                    0x1000 | 0x30 # MB_SYSTEMMODAL | MB_ICONWARNING
+                                ),
                                 daemon=True).start()
                                 
                             if action == "hibernate":
@@ -1103,6 +1124,7 @@ def fast_poll_loop():
                         "battery_capacity": data["battery_capacity"],
                         "temperature":      data.get("temperature"),
                         "runtime_estimate": rt,
+                        "charge_time_estimate": ct,
                         "on_battery":       on_bat,
                         "beeper_on":        data.get("beeper_on", True),
                         "last_update":      datetime.now().isoformat(),
