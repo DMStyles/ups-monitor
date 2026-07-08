@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.23"
+VERSION = "v2.0.24"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -922,14 +922,14 @@ class DirectUPSClient:
                     v_0   = 10.5 - (load_pct / 100.0) * 0.5
             else:
                 # CHARGING MODE: The UPS is actively pushing float voltage to the battery.
-                # We use the float voltage (27.4V / 13.7V) as the 100% mark.
+                # We use the float voltage (27.0V / 13.5V) as the 100% mark.
                 # This ensures the percentage climbs smoothly as the battery physically recharges,
                 # rather than instantly jumping to 100% the second power returns.
                 if bat_v > 15.0:
-                    v_100 = 27.4
+                    v_100 = 27.0
                     v_0   = 21.0
                 else:
-                    v_100 = 13.7
+                    v_100 = 13.5
                     v_0   = 10.5
 
             bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
