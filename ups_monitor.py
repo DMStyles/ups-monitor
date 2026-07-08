@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.26"
+VERSION = "v2.0.27"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -979,6 +979,11 @@ def fast_poll_loop():
                 if data:
                     cfg    = get_model_cfg()
                     watts  = round(cfg["max_watts"] * (data["load_percent"] / 100.0), 1)
+                    
+                    # Freeze battery percentage during short transient self-tests
+                    # so the UI doesn't temporarily jump due to the sudden test voltage sag.
+                    if data.get("ups_mode") == "Self-Test" and "battery_capacity" in ups_state:
+                        data["battery_capacity"] = ups_state["battery_capacity"]
                     on_bat = "battery" in (data.get("ups_mode") or "").lower()
                     rt     = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
                     ct     = None
