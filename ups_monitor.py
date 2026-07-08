@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.17"
+VERSION = "v2.0.18"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -910,8 +910,13 @@ class DirectUPSClient:
             beeper_on  = status[7] == '1' if len(status) == 8 else True
 
             # Estimate battery % from battery voltage
-            # Typical 12V SLA: 100% ~= 13.7V, 0% ~= 10.5V
-            bat_pct = max(0, min(100, int((bat_v - 10.5) / (13.7 - 10.5) * 100)))
+            # Auto-detect 12V vs 24V systems
+            if bat_v > 15.0:
+                # 24V system (2x 12V in series)
+                bat_pct = max(0, min(100, int((bat_v - 21.0) / (27.4 - 21.0) * 100)))
+            else:
+                # 12V system
+                bat_pct = max(0, min(100, int((bat_v - 10.5) / (13.7 - 10.5) * 100)))
 
             temp = None
             if temp_raw != '--.-':
@@ -1082,9 +1087,8 @@ def fast_poll_loop():
                         "last_update":      datetime.now().isoformat(),
                     })
                 else:
-                    if _last_on_battery:
-                        record_outage_end(ups_state.get("battery_capacity", 0))
-                        _last_on_battery = False
+                    # If we fail to read data, don't instantly end the outage. 
+                    # Just mark as disconnected until we get a clean read.
                     ups_state["connected"] = False
                 # notify SSE subscribers of new data
                 state_updated.set()
