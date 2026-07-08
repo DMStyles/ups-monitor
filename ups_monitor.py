@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.20"
+VERSION = "v2.0.21"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1069,6 +1069,11 @@ def fast_poll_loop():
                                   f"Battery at {data['battery_capacity']}%. Save your work now!",
                                   "danger"),
                             daemon=True).start()
+
+                    # Prevent battery % bouncing up and down while discharging
+                    if on_bat and _last_on_battery and "battery_capacity" in ups_state:
+                        if data["battery_capacity"] > ups_state["battery_capacity"]:
+                            data["battery_capacity"] = ups_state["battery_capacity"]
 
                     _last_on_battery = on_bat
 
