@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.19"
+VERSION = "v2.0.20"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -911,14 +911,14 @@ class DirectUPSClient:
 
             # Estimate battery % from battery voltage
             # Auto-detect 12V vs 24V systems
-            # We use resting full charge voltages (13.0V / 26.0V) as the 100% mark 
-            # instead of float voltages to prevent the percentage from dropping instantly when power cuts
+            # We use estimated voltage under load (12.2V / 24.4V) as the 100% mark
+            # because lead-acid batteries instantly sag under load when the power cuts.
             if bat_v > 15.0:
                 # 24V system (2x 12V in series)
-                bat_pct = max(0, min(100, int((bat_v - 21.0) / (26.0 - 21.0) * 100)))
+                bat_pct = max(0, min(100, int((bat_v - 21.0) / (24.4 - 21.0) * 100)))
             else:
                 # 12V system
-                bat_pct = max(0, min(100, int((bat_v - 10.5) / (13.0 - 10.5) * 100)))
+                bat_pct = max(0, min(100, int((bat_v - 10.5) / (12.2 - 10.5) * 100)))
 
             temp = None
             if temp_raw != '--.-':
