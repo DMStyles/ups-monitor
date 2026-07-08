@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.22"
+VERSION = "v2.0.23"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -909,20 +909,30 @@ class DirectUPSClient:
                 
             beeper_on  = status[7] == '1' if len(status) == 8 else True
 
-            # Estimate battery % from battery voltage, load-compensated
-            # Lead-acid batteries sag severely based on load. 
-            # We dynamically adjust the 100% and 0% voltage marks based on current load_pct.
-            if bat_v > 15.0:
-                # 24V system (2x 12V in series)
-                # Idle 100% = 26.0V. At full load, 100% sags to ~22.0V
-                v_100 = 26.0 - (load_pct / 100.0) * 4.0
-                v_0   = 21.0 - (load_pct / 100.0) * 1.0
-                bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
+            # Estimate battery % from battery voltage
+            # Lead-acid batteries have very different voltage profiles when charging vs discharging.
+            if on_battery:
+                # DISCHARGING MODE: The battery sags under load. 
+                # We dynamically adjust the 100% mark downwards based on the current load.
+                if bat_v > 15.0:
+                    v_100 = 26.0 - (load_pct / 100.0) * 4.0
+                    v_0   = 21.0 - (load_pct / 100.0) * 1.0
+                else:
+                    v_100 = 13.0 - (load_pct / 100.0) * 2.0
+                    v_0   = 10.5 - (load_pct / 100.0) * 0.5
             else:
-                # 12V system
-                v_100 = 13.0 - (load_pct / 100.0) * 2.0
-                v_0   = 10.5 - (load_pct / 100.0) * 0.5
-                bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
+                # CHARGING MODE: The UPS is actively pushing float voltage to the battery.
+                # We use the float voltage (27.4V / 13.7V) as the 100% mark.
+                # This ensures the percentage climbs smoothly as the battery physically recharges,
+                # rather than instantly jumping to 100% the second power returns.
+                if bat_v > 15.0:
+                    v_100 = 27.4
+                    v_0   = 21.0
+                else:
+                    v_100 = 13.7
+                    v_0   = 10.5
+
+            bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
 
             temp = None
             if temp_raw != '--.-':
