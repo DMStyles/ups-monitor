@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.21"
+VERSION = "v2.0.22"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -909,16 +909,20 @@ class DirectUPSClient:
                 
             beeper_on  = status[7] == '1' if len(status) == 8 else True
 
-            # Estimate battery % from battery voltage
-            # Auto-detect 12V vs 24V systems
-            # We use estimated voltage under load (12.2V / 24.4V) as the 100% mark
-            # because lead-acid batteries instantly sag under load when the power cuts.
+            # Estimate battery % from battery voltage, load-compensated
+            # Lead-acid batteries sag severely based on load. 
+            # We dynamically adjust the 100% and 0% voltage marks based on current load_pct.
             if bat_v > 15.0:
                 # 24V system (2x 12V in series)
-                bat_pct = max(0, min(100, int((bat_v - 21.0) / (24.4 - 21.0) * 100)))
+                # Idle 100% = 26.0V. At full load, 100% sags to ~22.0V
+                v_100 = 26.0 - (load_pct / 100.0) * 4.0
+                v_0   = 21.0 - (load_pct / 100.0) * 1.0
+                bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
             else:
                 # 12V system
-                bat_pct = max(0, min(100, int((bat_v - 10.5) / (12.2 - 10.5) * 100)))
+                v_100 = 13.0 - (load_pct / 100.0) * 2.0
+                v_0   = 10.5 - (load_pct / 100.0) * 0.5
+                bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
 
             temp = None
             if temp_raw != '--.-':
