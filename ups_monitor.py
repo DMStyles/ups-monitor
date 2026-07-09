@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.39"
+VERSION = "v2.0.40"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1317,7 +1317,7 @@ def fast_poll_loop():
                         if "hardware_battery_capacity" in data:
                             data["battery_capacity"] = data.pop("hardware_battery_capacity")
                         else:
-                            bat_blocks = cfg["bat_blocks"]
+                            bat_blocks = cfg.get("bat_blocks", 2)
                             v_bat_per_block = data["battery_voltage"] / bat_blocks
                             new_pct = _vp_calculate_battery_capacity(v_bat_per_block, data["load_percent"], on_bat)
                             
