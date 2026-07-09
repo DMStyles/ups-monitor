@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.35"
+VERSION = "v2.0.36"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1652,6 +1652,35 @@ def api_models():
     return jsonify({"models": list(UPS_MODELS.keys()), "specs": UPS_MODELS})
 
 
+import subprocess
+
+def _start_viewpower():
+    log.info("Starting ViewPower...")
+    vp_paths = [
+        r"C:\ViewPower\ViewPower.exe",
+        r"C:\Program Files\ViewPower\ViewPower.exe",
+        r"C:\Program Files (x86)\ViewPower\ViewPower.exe"
+    ]
+    for p in vp_paths:
+        if os.path.exists(p):
+            try:
+                os.startfile(p)
+                log.info(f"Started ViewPower: {p}")
+                return
+            except Exception as e:
+                log.warning(f"Error starting {p}: {e}")
+    log.warning("Could not find ViewPower.exe to start it.")
+
+def _stop_viewpower():
+    log.info("Stopping ViewPower...")
+    try:
+        subprocess.run('taskkill /F /IM ViewPower.exe', shell=True, capture_output=True)
+        subprocess.run('taskkill /F /IM upsMonitor.exe', shell=True, capture_output=True)
+        subprocess.run('wmic process where "name=\'java.exe\' and ExecutablePath like \'%ViewPower%\'" call terminate', shell=True, capture_output=True)
+        log.info("ViewPower stopped.")
+    except Exception as e:
+        log.warning(f"Error stopping ViewPower: {e}")
+
 @flask_app.route("/api/settings/data_source", methods=["POST"])
 def api_set_data_source():
     """Save the data_source setting and hot-swap the UPS client."""
@@ -1662,10 +1691,17 @@ def api_set_data_source():
         return jsonify({"ok": False, "error": "Invalid data_source value"}), 400
     settings["data_source"] = src
     save_settings(settings)
+    
+    if src == "viewpower":
+        _start_viewpower()
+    else:
+        _stop_viewpower()
+        
     # Hot-swap the client so the running poll loop picks it up immediately
     ups_client = _make_ups_client()
     log.info(f"Data source changed to: {src}")
     return jsonify({"ok": True, "data_source": src})
+
 
 
 @flask_app.route("/api/history")
@@ -2227,6 +2263,15 @@ def main():
         supabase_sync.start_sync_thread(str(DB_PATH))
     except Exception as e:
         log.error(f"Failed to restore session or start supabase sync thread: {e}")
+
+    def _enforce_viewpower_state():
+        src = settings.get("data_source", "direct")
+        if src == "viewpower":
+            _start_viewpower()
+        else:
+            _stop_viewpower()
+            
+    _enforce_viewpower_state()
 
     threading.Thread(target=fast_poll_loop, daemon=True).start()
     threading.Thread(target=db_write_loop,  daemon=True).start()
