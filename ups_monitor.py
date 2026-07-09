@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.32"
+VERSION = "v2.0.33"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1077,10 +1077,7 @@ def fast_poll_loop():
                                   f"({data['battery_capacity']}% remaining).",
                                   "danger"),
                             daemon=True).start()
-                        
-                        # Auto-open dashboard on the correct port
-                        import webbrowser
-                        webbrowser.open(DASHBOARD_URL)
+
 
                     elif not on_bat and _last_on_battery:
                         record_outage_end(data["battery_capacity"])
