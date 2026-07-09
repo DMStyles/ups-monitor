@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.27"
+VERSION = "v2.0.28"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -909,30 +909,9 @@ class DirectUPSClient:
                 
             beeper_on  = status[7] == '1' if len(status) == 8 else True
 
-            # Estimate battery % from battery voltage
-            # Lead-acid batteries have very different voltage profiles when charging vs discharging.
-            if on_battery:
-                # DISCHARGING MODE: The battery sags under load. 
-                # We dynamically adjust the 100% mark downwards based on the current load.
-                if bat_v > 15.0:
-                    v_100 = 26.0 - (load_pct / 100.0) * 4.0
-                    v_0   = 21.0 - (load_pct / 100.0) * 1.0
-                else:
-                    v_100 = 13.0 - (load_pct / 100.0) * 2.0
-                    v_0   = 10.5 - (load_pct / 100.0) * 0.5
-            else:
-                # CHARGING MODE: The UPS is actively pushing float voltage to the battery.
-                # We use the float voltage (27.0V / 13.5V) as the 100% mark.
-                # This ensures the percentage climbs smoothly as the battery physically recharges,
-                # rather than instantly jumping to 100% the second power returns.
-                if bat_v > 15.0:
-                    v_100 = 27.0
-                    v_0   = 21.0
-                else:
-                    v_100 = 13.5
-                    v_0   = 10.5
-
-            bat_pct = max(0, min(100, int((bat_v - v_0) / (v_100 - v_0) * 100)))
+            # battery_capacity is now managed by fast_poll_loop using state tracking.
+            # We report the raw voltage here and let the poll loop compute a stable percentage.
+            bat_pct = None
 
             temp = None
             if temp_raw != '--.-':
@@ -971,7 +950,18 @@ def fast_poll_loop():
     _high_load_notified = False
     _shutdown_triggered = False
     _outage_start_time = None
-    log.info("Fast poll loop started.")
+
+    # ── Battery state tracking ─────────────────────────────────────────────────
+    # We do NOT derive battery % from voltage (too unreliable).
+    # Instead we track it as a persistent state variable that only changes
+    # when we have high-confidence information (outage start, charge timing).
+    _bat_pct          = 100        # Our tracked battery percentage
+    _charge_start_pct = None       # % when charging started (after an outage)
+    _charge_start_time = None      # datetime when charging started
+    # Prolink PRO1201SFC: ~6 hours (360 min) to fully charge from 0%.
+    # So each 1% takes 3.6 minutes to recharge.
+    _MINS_PER_PCT_CHARGE = 3.6
+    # ──────────────────────────────────────────────────────────────────────────
     while True:
         try:
             data = ups_client.fetch()
@@ -979,18 +969,40 @@ def fast_poll_loop():
                 if data:
                     cfg    = get_model_cfg()
                     watts  = round(cfg["max_watts"] * (data["load_percent"] / 100.0), 1)
-                    
-                    # Freeze battery percentage during short transient self-tests
-                    # so the UI doesn't temporarily jump due to the sudden test voltage sag.
-                    if data.get("ups_mode") == "Self-Test" and "battery_capacity" in ups_state:
-                        data["battery_capacity"] = ups_state["battery_capacity"]
                     on_bat = "battery" in (data.get("ups_mode") or "").lower()
-                    rt     = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
-                    ct     = None
-                    
+                    is_test = data.get("ups_mode") == "Self-Test"
+
+                    # ── Battery % State Machine ────────────────────────────────
+                    # We NEVER compute % from voltage. Instead we track it as state.
+                    if is_test:
+                        # Self-Test: freeze at current value, do nothing
+                        pass
+                    elif on_bat:
+                        # Discharging: drain the percentage based on power draw.
+                        # watts / (battery_wh * 3600) gives % drain per second.
+                        max_wh = cfg.get("battery_wh", 196.8)  # Prolink PRO1201SFC = 196.8Wh
+                        drain_per_sec = watts / (max_wh * 36)  # 36 = 3600s * (1/100 to get %)
+                        _bat_pct = max(0, _bat_pct - drain_per_sec * 2)  # poll every 2s
+                        _charge_start_pct  = None
+                        _charge_start_time = None
+                    else:
+                        # On mains power (charging or full)
+                        if _charge_start_pct is not None:
+                            # We were previously on battery — count the charge back up
+                            elapsed_mins = (datetime.now() - _charge_start_time).total_seconds() / 60.0
+                            pct_recovered = elapsed_mins / _MINS_PER_PCT_CHARGE
+                            _bat_pct = min(100, _charge_start_pct + pct_recovered)
+                        else:
+                            # Normal mains operation — just hold at 100
+                            _bat_pct = 100
+
+                    data["battery_capacity"] = int(round(_bat_pct))
+                    # ──────────────────────────────────────────────────────────
+
+                    rt = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
+                    ct = None
                     if not on_bat and data["battery_capacity"] < 100:
-                        # Estimate roughly 6 hours (360 mins) to full charge from 0%
-                        mins_to_full = int((100 - data["battery_capacity"]) * 3.6)
+                        mins_to_full = int((100 - data["battery_capacity"]) * _MINS_PER_PCT_CHARGE)
                         ct = f"{mins_to_full // 60}h {mins_to_full % 60}m"
 
                     # ── Outage detection ──────────────────────
@@ -1017,6 +1029,10 @@ def fast_poll_loop():
                         _low_bat_notified = False
                         _high_load_notified = False
                         _outage_start_time = None
+                        
+                        # Start charge tracking from where the battery is right now
+                        _charge_start_pct  = _bat_pct
+                        _charge_start_time = datetime.now()
                         
                         # Abort shutdown if one was pending
                         if _shutdown_triggered:
@@ -1110,10 +1126,6 @@ def fast_poll_loop():
                                   "danger"),
                             daemon=True).start()
 
-                    # Prevent battery % bouncing up and down while discharging
-                    if on_bat and _last_on_battery and "battery_capacity" in ups_state:
-                        if data["battery_capacity"] > ups_state["battery_capacity"]:
-                            data["battery_capacity"] = ups_state["battery_capacity"]
 
                     _last_on_battery = on_bat
 
