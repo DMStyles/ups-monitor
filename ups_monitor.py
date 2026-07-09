@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.31"
+VERSION = "v2.0.32"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1008,6 +1008,13 @@ def fast_poll_loop():
     _outage_start_time = None
 
     log.info("Fast poll loop started.")
+    # Charge tracking: set when power is restored after an outage.
+    # We use time-based estimation to climb back to 100% rather than
+    # instantly jumping, which is what ViewPower does.
+    _charge_start_pct  = None   # % when mains was restored
+    _charge_start_time = None   # datetime when mains was restored
+    # Prolink PRO1201SFC spec: 2-4h to 90%. We use 4h to 100% = 2.4 min/pct.
+    _MINS_PER_PCT = 2.4
     while True:
         try:
             data = ups_client.fetch()
@@ -1021,23 +1028,30 @@ def fast_poll_loop():
                     # ── Battery % State Machine ────────────────────────────────
                     if is_test:
                         pass   # Self-Test: freeze at current ups_state value below
-                    else:
-                        # ── Load-compensated voltage lookup (same method as ViewPower) ──
-                        # On mains: battery has NO load → raw voltage IS the resting voltage.
-                        # On battery: voltage sags under load → _voltage_to_pct adds the sag back.
-                        lookup_load = data["load_percent"] if on_bat else 0
-                        new_pct = _voltage_to_pct(data["battery_voltage"], lookup_load, cfg)
-
-                        # ── One-way discharge ratchet ──────────────────────────
-                        # While actively on battery, voltage fluctuates slightly (±0.1V)
-                        # which causes the % to wobble between e.g. 95-97%.
-                        # A real battery CANNOT gain charge while powering your PC,
-                        # so we clamp: percentage can only go DOWN or stay the same
-                        # while on battery. On mains, we always trust the raw reading.
-                        if on_bat and "battery_capacity" in ups_state:
+                    elif on_bat:
+                        # ── Discharging: load-compensated voltage lookup + one-way ratchet ──
+                        new_pct = _voltage_to_pct(data["battery_voltage"], data["load_percent"], cfg)
+                        # Clamp: can only go down while discharging (blocks voltage noise bounce)
+                        if "battery_capacity" in ups_state:
                             new_pct = min(new_pct, ups_state["battery_capacity"])
-
                         data["battery_capacity"] = new_pct
+                        # While on battery, charging is not in progress
+                        _charge_start_pct  = None
+                        _charge_start_time = None
+                    else:
+                        # ── On mains: use time-based charging if returning from outage ──
+                        if _charge_start_pct is not None:
+                            # Recovering from an outage: count the % back up over time
+                            elapsed_mins = (datetime.now() - _charge_start_time).total_seconds() / 60.0
+                            estimated_pct = int(min(100, _charge_start_pct + elapsed_mins / _MINS_PER_PCT))
+                            data["battery_capacity"] = estimated_pct
+                            if estimated_pct >= 100:
+                                # Fully charged — stop tracking
+                                _charge_start_pct  = None
+                                _charge_start_time = None
+                        else:
+                            # Normal mains operation with no recent outage → 100%
+                            data["battery_capacity"] = 100
 
                     # During self-test: freeze the percentage at the last known value
                     if is_test and "battery_capacity" in ups_state:
@@ -1045,10 +1059,9 @@ def fast_poll_loop():
 
                     rt = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
                     ct = None
-                    if not on_bat and data["battery_capacity"] < 100:
-                        # Prolink PRO1201SFC recharges ~1% per 3.6 minutes (6h for full charge)
-                        mins_to_full = int((100 - data["battery_capacity"]) * 3.6)
-                        ct = f"{mins_to_full // 60}h {mins_to_full % 60}m"
+                    if not on_bat and _charge_start_pct is not None and data["battery_capacity"] < 100:
+                        mins_remaining = int((100 - data["battery_capacity"]) * _MINS_PER_PCT)
+                        ct = f"{mins_remaining // 60}h {mins_remaining % 60}m"
 
                     # ── Outage detection ──────────────────────
                     if on_bat and not _last_on_battery:
@@ -1074,6 +1087,10 @@ def fast_poll_loop():
                         _low_bat_notified = False
                         _high_load_notified = False
                         _outage_start_time = None
+                        # Start charge tracking from the current depleted level
+                        _charge_start_pct  = data["battery_capacity"]
+                        _charge_start_time = datetime.now()
+                        log.info(f"Charging started from {_charge_start_pct}%")
 
                         # Abort shutdown if one was pending
                         if _shutdown_triggered:
