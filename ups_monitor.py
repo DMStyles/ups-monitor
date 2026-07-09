@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.30"
+VERSION = "v2.0.31"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1019,18 +1019,25 @@ def fast_poll_loop():
                     is_test = data.get("ups_mode") == "Self-Test"
 
                     # ── Battery % State Machine ────────────────────────────────
-                    # We NEVER compute % from voltage. Instead we track it as state.
                     if is_test:
-                        # Self-Test: freeze at current value, do nothing
                         pass   # Self-Test: freeze at current ups_state value below
                     else:
                         # ── Load-compensated voltage lookup (same method as ViewPower) ──
                         # On mains: battery has NO load → raw voltage IS the resting voltage.
                         # On battery: voltage sags under load → _voltage_to_pct adds the sag back.
                         lookup_load = data["load_percent"] if on_bat else 0
-                        data["battery_capacity"] = _voltage_to_pct(
-                            data["battery_voltage"], lookup_load, cfg
-                        )
+                        new_pct = _voltage_to_pct(data["battery_voltage"], lookup_load, cfg)
+
+                        # ── One-way discharge ratchet ──────────────────────────
+                        # While actively on battery, voltage fluctuates slightly (±0.1V)
+                        # which causes the % to wobble between e.g. 95-97%.
+                        # A real battery CANNOT gain charge while powering your PC,
+                        # so we clamp: percentage can only go DOWN or stay the same
+                        # while on battery. On mains, we always trust the raw reading.
+                        if on_bat and "battery_capacity" in ups_state:
+                            new_pct = min(new_pct, ups_state["battery_capacity"])
+
+                        data["battery_capacity"] = new_pct
 
                     # During self-test: freeze the percentage at the last known value
                     if is_test and "battery_capacity" in ups_state:
