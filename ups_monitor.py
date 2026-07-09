@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.37"
+VERSION = "v2.0.38"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -76,38 +76,7 @@ UPS_MODELS = {
 }
 
 
-def _voltage_to_pct(bat_v: float, load_pct: int, cfg: dict) -> int:
-    """
-    Convert raw battery voltage to capacity percentage using a load-compensated
-    lookup table — the same method ViewPower uses internally.
 
-    When on mains power, the battery carries NO load (the wall powers the PC),
-    so bat_v is the true resting voltage and no compensation is needed.
-    When on battery, voltage sags under load; we add back the estimated sag
-    to recover the true resting voltage before looking up the table.
-    """
-    curve    = cfg.get("batt_curve", [(25.60, 100), (20.80, 0)])
-    max_sag  = cfg.get("load_sag_v", 2.4)
-
-    # Recover resting voltage by adding back the load-induced sag
-    resting_v = bat_v + (load_pct / 100.0) * max_sag
-
-    # Float / fully charged: voltage above the top of the curve
-    if resting_v >= curve[0][0]:
-        return 100
-    # Exhausted: voltage below the bottom of the curve
-    if resting_v <= curve[-1][0]:
-        return 0
-
-    # Interpolate between the two bracketing curve points
-    for i in range(len(curve) - 1):
-        v_hi, p_hi = curve[i]
-        v_lo, p_lo = curve[i + 1]
-        if v_lo <= resting_v <= v_hi:
-            ratio = (resting_v - v_lo) / (v_hi - v_lo)
-            return int(round(p_lo + ratio * (p_hi - p_lo)))
-
-    return 0
 
 
 # ══════════════════════════════════════════════════════
@@ -1061,33 +1030,51 @@ class DirectUPSClient:
     VID = UPS_VID
     PID = UPS_PID
 
-    def fetch(self) -> dict | None:
+    def _query(self, cmd_str: str) -> bytes | None:
         try:
             dev = hid.device()
             dev.open(self.VID, self.PID)
             dev.set_nonblocking(False)
-
-            # Send QS command (status query)
-            cmd = b'QS\r'
+            cmd = cmd_str.encode('ascii') + b'\r'
             packet = b'\x00' + cmd + b'\x00' * (8 - len(cmd))
             dev.write(packet)
 
-            # Read response (may come in multiple 8-byte chunks)
             raw = b''
             for _ in range(40):
                 chunk = dev.read(8, timeout_ms=200)
                 if chunk:
                     raw += bytes(chunk)
                     if b'\r' in raw and b'(' in raw:
-                        # Ensure the \r comes after the (
                         if raw.find(b'\r', raw.find(b'(')) != -1:
                             break
-
             dev.close()
-            return self._parse_q1(raw)
+            return raw
         except Exception as e:
-            log.error(f"DirectUPS HID fetch failed: {e}")
+            log.error(f"DirectUPS HID query '{cmd_str}' failed: {e}")
             return None
+
+    def fetch(self) -> dict | None:
+        raw_qs = self._query('QS')
+        if not raw_qs:
+            return None
+            
+        data = self._parse_q1(raw_qs)
+        if not data:
+            return None
+            
+        # Try QBV to see if the hardware provides its own internal capacity
+        raw_qbv = self._query('QBV')
+        if raw_qbv:
+            text_qbv = raw_qbv.replace(b'\x00', b'').decode('ascii', errors='ignore')
+            m = re.search(r'\(([\d. ]+)\r?', text_qbv)
+            if m:
+                parts = m.group(1).split()
+                if len(parts) >= 4:
+                    try:
+                        data["hardware_battery_capacity"] = int(parts[3])
+                    except ValueError:
+                        pass
+        return data
 
     def send_command(self, cmd_str: str) -> bool:
         """Sends a raw command (like 'Q' or 'T') to the UPS."""
@@ -1188,6 +1175,59 @@ def _make_ups_client():
     return DirectUPSClient()
 
 ups_client = _make_ups_client()
+
+
+_vp_cur_capacity = 90
+_vp_cur_time = 0.0
+
+def _vp_calculate_battery_capacity(v_bat_per_block: float, load_pct: int, on_battery: bool) -> int:
+    """
+    Official ViewPower fallback battery calculation algorithm.
+    Used when the UPS does not support the QBV hardware capacity command.
+    """
+    global _vp_cur_capacity, _vp_cur_time
+    import time
+    
+    if not on_battery:
+        # Line mode / Standby mode (Charging)
+        if v_bat_per_block < 11.6:
+            return 0
+        if v_bat_per_block >= 13.5:
+            return 100
+        if v_bat_per_block >= 13.3:
+            if _vp_cur_capacity >= 100:
+                return 100
+            if _vp_cur_time > 0:
+                now = time.time()
+                # ViewPower adds 1% every 720,000 ms (12 minutes) during float charge
+                if (now - _vp_cur_time) >= 720.0:
+                    _vp_cur_time = now
+                    _vp_cur_capacity += 1
+                    return _vp_cur_capacity
+                return _vp_cur_capacity
+            _vp_cur_time = time.time()
+            return _vp_cur_capacity
+            
+        # Between 11.6 and 13.3, linear ramp up to 90%
+        return int(90.0 * (v_bat_per_block - 11.6) / 1.7)
+    
+    else:
+        # Battery mode / Discharging
+        _vp_cur_capacity = 90
+        _vp_cur_time = 0.0
+        
+        if load_pct < 20:
+            if v_bat_per_block > 13.2:
+                return 100
+            if v_bat_per_block > 10.2:
+                return int(100.0 * (v_bat_per_block - 10.2) / 3.0)
+            return 0
+        else:
+            if v_bat_per_block > 12.7:
+                return 100
+            if v_bat_per_block > 10.2:
+                return int(100.0 * (v_bat_per_block - 10.2) / 2.5)
+            return 0
 
 
 def fast_poll_loop():
