@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.33"
+VERSION = "v2.0.34"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -869,7 +869,188 @@ def get_battery_health() -> dict:
 
 
 # ══════════════════════════════════════════════════════
-#  VIEWPOWER CLIENT
+#  VIEWPOWER CLIENT  (reads from ViewPower software API)
+# ══════════════════════════════════════════════════════
+VIEWPOWER_BASE = "http://localhost:15178/ViewPower"
+
+class ViewPowerClient:
+    """
+    Communicates with the local ViewPower software at localhost:15178.
+    Tries multiple strategies: JSON endpoint → HTML scrape.
+    ViewPower reports battery_capacity directly so no voltage math needed.
+    """
+    HEADERS = {"Accept": "application/json, text/html, */*", "User-Agent": "UPSMonitor/2.0"}
+    TIMEOUT  = 5
+
+    def __init__(self, base_url: str = VIEWPOWER_BASE):
+        self.base_url   = base_url.rstrip("/")
+        self.session    = requests.Session()
+        self.session.headers.update(self.HEADERS)
+        self._device_id = None
+
+    def send_command(self, cmd_str: str) -> bool:
+        """ViewPower mode: commands not supported via this client."""
+        log.warning("Hardware commands are not available in ViewPower mode.")
+        return False
+
+    def fetch(self) -> dict | None:
+        """Return parsed UPS data dict, or None if ViewPower is unreachable."""
+        data = self._try_req_monitor_data()
+        if data:
+            return data
+        data = self._try_load_info_action()
+        if data:
+            return data
+        data = self._try_device_summary_action()
+        if data:
+            return data
+        return self._try_html_monitor()
+
+    def _try_req_monitor_data(self) -> dict | None:
+        try:
+            r = self.session.get(f"{self.base_url}/monitor", timeout=self.TIMEOUT)
+            if r.status_code != 200:
+                return None
+            html = r.text
+            m = re.search(r'var\s+portName\s*=\s*\"([^\"]+)\";', html)
+            if not m:
+                m = re.search(r"var\s+portName\s*=\s*'([^']+)';", html)
+            port_name = m.group(1) if m else self._resolve_port_name_from_tree()
+            if not port_name:
+                port_name = "USB2F7113A9"
+            r2 = self.session.post(f"{self.base_url}/workstatus/reqMonitorData",
+                                   data={"portName": port_name}, timeout=self.TIMEOUT)
+            if r2.status_code == 200:
+                work_info = r2.json().get("workInfo")
+                if work_info:
+                    return self._parse_work_info(work_info)
+        except Exception as e:
+            log.debug(f"reqMonitorData failed: {e}")
+        return None
+
+    def _resolve_port_name_from_tree(self) -> str | None:
+        try:
+            import random
+            r = self.session.get(f"{self.base_url}/initDeviceTree?{random.random()}", timeout=self.TIMEOUT)
+            if r.status_code == 200:
+                for node in r.json():
+                    if node.get("pId") == "11" or "USB" in node.get("name", ""):
+                        m2 = re.match(r'([A-Za-z]+)\s*\(id=([A-Za-z0-9]+)_[A-Za-z0-9]+\)', node.get("name",""))
+                        if m2:
+                            return m2.group(1) + m2.group(2)
+        except Exception as e:
+            log.debug(f"Port name tree resolve failed: {e}")
+        return None
+
+    def _parse_work_info(self, wi: dict) -> dict | None:
+        try:
+            def f(v, d=0.0): 
+                try: return float(v) if v not in (None, "", "----") else d
+                except: return d
+            def i(v, d=0):
+                try: return int(v) if v not in (None, "", "----") else d
+                except: return d
+            return {
+                "input_voltage":    f(wi.get("inputVoltage")),
+                "output_voltage":   f(wi.get("outputVoltage")),
+                "frequency":        f(wi.get("outputFrequency")),
+                "load_percent":     i(wi.get("outputLoadPercent")),
+                "battery_voltage":  f(wi.get("batteryVoltage")),
+                "battery_capacity": i(wi.get("batteryCapacity")),
+                "temperature":      f(wi.get("temperature")) or None,
+                "ups_mode":         wi.get("workMode", "Line mode"),
+                "beeper_on":        True,
+            }
+        except Exception as e:
+            log.debug(f"parse_work_info failed: {e}")
+        return None
+
+    def _try_load_info_action(self) -> dict | None:
+        did = self._device_id or self._get_device_id()
+        if not did:
+            return None
+        try:
+            r = self.session.get(f"{self.base_url}/loadInfo.action",
+                                 params={"deviceId": did}, timeout=self.TIMEOUT)
+            if r.status_code == 200:
+                return self._parse_load_info_json(r.json())
+        except Exception as e:
+            log.debug(f"loadInfo.action failed: {e}")
+        return None
+
+    def _get_device_id(self) -> str | None:
+        for ep in ("/deviceList.action", "/getDeviceList.action"):
+            try:
+                r = self.session.get(self.base_url + ep, timeout=self.TIMEOUT)
+                if r.status_code == 200:
+                    devs = r.json().get("deviceList") or r.json().get("devices") or []
+                    if devs:
+                        self._device_id = str(devs[0].get("deviceId") or devs[0].get("id") or "")
+                        return self._device_id
+            except Exception as e:
+                log.debug(f"deviceList {ep} failed: {e}")
+        return None
+
+    def _parse_load_info_json(self, j: dict) -> dict | None:
+        try:
+            return {
+                "input_voltage":    float(j.get("inputVoltage", 0) or 0),
+                "output_voltage":   float(j.get("outputVoltage", 0) or 0),
+                "frequency":        float(j.get("outputFrequency", 0) or j.get("inputFrequency", 0) or 0),
+                "load_percent":     int(j.get("loadLevel", 0) or j.get("load", 0) or 0),
+                "battery_voltage":  float(j.get("batteryVoltage", 0) or 0),
+                "battery_capacity": int(j.get("batteryCapacity", 0) or 0),
+                "temperature":      None,
+                "ups_mode":         j.get("upsMode", "Unknown"),
+                "beeper_on":        True,
+            }
+        except:
+            return None
+
+    def _try_device_summary_action(self) -> dict | None:
+        did = self._device_id or self._get_device_id()
+        if not did:
+            return None
+        try:
+            r = self.session.get(f"{self.base_url}/getDeviceSummary.action",
+                                 params={"deviceId": did}, timeout=self.TIMEOUT)
+            if r.status_code == 200 and r.text.strip().startswith("{"):
+                return self._parse_load_info_json(r.json())
+        except Exception as e:
+            log.debug(f"getDeviceSummary failed: {e}")
+        return None
+
+    def _try_html_monitor(self) -> dict | None:
+        for url in [f"{self.base_url}/monitor", "http://localhost:15178/ViewPower/"]:
+            try:
+                r = self.session.get(url, timeout=self.TIMEOUT)
+                if r.status_code == 200 and "<html" in r.text.lower():
+                    # Extract numbers from input fields (ViewPower layout)
+                    from html.parser import HTMLParser
+                    vals = []
+                    class _P(HTMLParser):
+                        def handle_starttag(self, tag, attrs):
+                            if tag == "input":
+                                d = dict(attrs)
+                                if d.get("type") == "text" and d.get("value"):
+                                    m2 = re.search(r"[-+]?\d*\.?\d+", d["value"])
+                                    if m2:
+                                        vals.append(float(m2.group()))
+                    _P().feed(r.text)
+                    if len(vals) >= 6:
+                        return {
+                            "input_voltage": vals[0], "output_voltage": vals[1],
+                            "frequency": vals[2],     "load_percent": int(vals[3]),
+                            "battery_voltage": vals[4], "battery_capacity": int(vals[5]),
+                            "temperature": None, "ups_mode": "Line mode", "beeper_on": True,
+                        }
+            except Exception as e:
+                log.debug(f"HTML monitor {url} failed: {e}")
+        return None
+
+
+# ══════════════════════════════════════════════════════
+#  DIRECT USB CLIENT  (reads from UPS hardware via HID)
 # ══════════════════════════════════════════════════════
 class DirectUPSClient:
     """Reads UPS data directly via USB HID using the Megatec/Voltronic QS protocol.
@@ -997,7 +1178,16 @@ class DirectUPSClient:
 # ══════════════════════════════════════════════════════
 #  POLLING LOOPS
 # ══════════════════════════════════════════════════════
-ups_client = DirectUPSClient()
+def _make_ups_client():
+    """Return the correct UPS client based on the current data_source setting."""
+    src = settings.get("data_source", "direct")
+    if src == "viewpower":
+        log.info("Data source: ViewPower")
+        return ViewPowerClient()
+    log.info("Data source: Direct USB")
+    return DirectUPSClient()
+
+ups_client = _make_ups_client()
 
 
 def fast_poll_loop():
@@ -1026,7 +1216,13 @@ def fast_poll_loop():
                     is_test = data.get("ups_mode") == "Self-Test"
 
                     # ── Battery % State Machine ────────────────────────────────
-                    if is_test:
+                    use_viewpower = settings.get("data_source", "direct") == "viewpower"
+
+                    if use_viewpower:
+                        # ViewPower reports battery_capacity directly — trust it as-is.
+                        # No voltage math needed, no charge tracking needed.
+                        pass
+                    elif is_test:
                         pass   # Self-Test: freeze at current ups_state value below
                     elif on_bat:
                         # ── Discharging: load-compensated voltage lookup + one-way ratchet ──
@@ -1041,25 +1237,22 @@ def fast_poll_loop():
                     else:
                         # ── On mains: use time-based charging if returning from outage ──
                         if _charge_start_pct is not None:
-                            # Recovering from an outage: count the % back up over time
                             elapsed_mins = (datetime.now() - _charge_start_time).total_seconds() / 60.0
                             estimated_pct = int(min(100, _charge_start_pct + elapsed_mins / _MINS_PER_PCT))
                             data["battery_capacity"] = estimated_pct
                             if estimated_pct >= 100:
-                                # Fully charged — stop tracking
                                 _charge_start_pct  = None
                                 _charge_start_time = None
                         else:
-                            # Normal mains operation with no recent outage → 100%
                             data["battery_capacity"] = 100
 
-                    # During self-test: freeze the percentage at the last known value
-                    if is_test and "battery_capacity" in ups_state:
+                    # During self-test (Direct mode only): freeze the percentage
+                    if not use_viewpower and is_test and "battery_capacity" in ups_state:
                         data["battery_capacity"] = ups_state["battery_capacity"]
 
                     rt = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
                     ct = None
-                    if not on_bat and _charge_start_pct is not None and data["battery_capacity"] < 100:
+                    if not on_bat and not use_viewpower and _charge_start_pct is not None and data["battery_capacity"] < 100:
                         mins_remaining = int((100 - data["battery_capacity"]) * _MINS_PER_PCT)
                         ct = f"{mins_remaining // 60}h {mins_remaining % 60}m"
 
@@ -1306,6 +1499,7 @@ def api_status():
         "temperature_supported": cfg.get("temperature_supported", True),
         "version":               VERSION,
         "cloud_synced":          supabase_sync.sync_enabled,
+        "data_source":           settings.get("data_source", "direct"),
     })
     return jsonify(s)
 
@@ -1456,6 +1650,22 @@ def api_settings():
 @flask_app.route("/api/models")
 def api_models():
     return jsonify({"models": list(UPS_MODELS.keys()), "specs": UPS_MODELS})
+
+
+@flask_app.route("/api/settings/data_source", methods=["POST"])
+def api_set_data_source():
+    """Save the data_source setting and hot-swap the UPS client."""
+    global ups_client, settings
+    body = request.get_json(force=True)
+    src = body.get("data_source", "direct")
+    if src not in ("direct", "viewpower"):
+        return jsonify({"ok": False, "error": "Invalid data_source value"}), 400
+    settings["data_source"] = src
+    save_settings(settings)
+    # Hot-swap the client so the running poll loop picks it up immediately
+    ups_client = _make_ups_client()
+    log.info(f"Data source changed to: {src}")
+    return jsonify({"ok": True, "data_source": src})
 
 
 @flask_app.route("/api/history")

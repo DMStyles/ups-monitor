@@ -191,12 +191,12 @@
         </section>
 
         <!-- QUICK ACTIONS -->
-        <section class="quick-actions-card">
+        <section class="quick-actions-card" id="hardware-controls-section">
           <div class="quick-actions-title">
             <span>⚡</span>
             <div>
               <strong>Hardware Controls</strong>
-              <div style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">Direct USB command link active</div>
+              <div id="hw-controls-subtitle" style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">Direct USB command link active</div>
             </div>
           </div>
           <div class="quick-actions-buttons">
@@ -530,7 +530,35 @@
           </div>
         </section>
 
-        <!-- Cloud Profile -->
+        <!-- Data Source -->
+        <section class="card settings-card">
+          <h2 class="card-title">🔌 Data Source</h2>
+          <p style="color:var(--text-dim); font-size:0.875rem; margin:0 0 16px 0;">
+            Choose how the app reads UPS data. <strong>Direct USB</strong> connects straight to the UPS hardware.
+            <strong>ViewPower</strong> reads from the ViewPower software — use this if you want ViewPower to stay in control.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <label id="lbl-direct" style="display:flex; align-items:flex-start; gap:14px; padding:14px 16px; border-radius:10px; border:2px solid transparent; cursor:pointer; transition:border 0.2s; background:var(--card-bg);">
+              <input type="radio" name="data_source" id="ds-direct" value="direct" style="margin-top:3px; accent-color:var(--accent); width:18px; height:18px;">
+              <div>
+                <div style="font-weight:700; font-size:0.95rem;">⚡ Direct USB</div>
+                <div style="color:var(--text-dim); font-size:0.82rem; margin-top:3px;">App talks directly to UPS hardware via USB. ViewPower does NOT need to be running. Gives full hardware control (mute alarm, self-test).</div>
+              </div>
+            </label>
+            <label id="lbl-viewpower" style="display:flex; align-items:flex-start; gap:14px; padding:14px 16px; border-radius:10px; border:2px solid transparent; cursor:pointer; transition:border 0.2s; background:var(--card-bg);">
+              <input type="radio" name="data_source" id="ds-viewpower" value="viewpower" style="margin-top:3px; accent-color:var(--accent); width:18px; height:18px;">
+              <div>
+                <div style="font-weight:700; font-size:0.95rem;">🖥️ ViewPower</div>
+                <div style="color:var(--text-dim); font-size:0.82rem; margin-top:3px;">Reads data from ViewPower software (must be running). Battery % comes directly from ViewPower — most accurate. Hardware controls (alarm, self-test) are disabled in this mode.</div>
+              </div>
+            </label>
+          </div>
+          <div style="margin-top:16px; display:flex; align-items:center; gap:12px;">
+            <button class="settings-btn settings-btn-primary" id="ds-save-btn" onclick="saveDataSource()">💾 Apply & Restart</button>
+            <span id="ds-status" style="font-size:0.82rem; color:var(--text-dim);"></span>
+          </div>
+        </section>
+
         <section class="card settings-card" id="cloud-profile-card">
           <h2 class="card-title">☁️ Cloud Account</h2>
           <div id="cloud-not-signed-in">

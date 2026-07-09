@@ -92,11 +92,66 @@ async function loadSettings() {
     onModelChange();
     loadCloudProfile();
 
+    // Load data source selection
+    const src = settings.data_source || 'direct';
+    const radio = document.getElementById(src === 'viewpower' ? 'ds-viewpower' : 'ds-direct');
+    if (radio) radio.checked = true;
+    highlightDataSourceCard(src);
+
   } catch (err) {
     console.error("Error loading settings:", err);
   }
 }
 
+
+
+function highlightDataSourceCard(src) {
+  const lblDirect    = document.getElementById('lbl-direct');
+  const lblViewpower = document.getElementById('lbl-viewpower');
+  if (!lblDirect || !lblViewpower) return;
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#00e5a0';
+  lblDirect.style.border    = src === 'direct'    ? `2px solid ${accent}` : '2px solid transparent';
+  lblViewpower.style.border = src === 'viewpower' ? `2px solid ${accent}` : '2px solid transparent';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  ['ds-direct', 'ds-viewpower'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => highlightDataSourceCard(el.value));
+  });
+});
+
+async function saveDataSource() {
+  const selected = document.querySelector('input[name="data_source"]:checked');
+  if (!selected) return;
+  const src = selected.value;
+  const btn = document.getElementById('ds-save-btn');
+  const status = document.getElementById('ds-status');
+  btn.disabled = true;
+  btn.innerText = 'Saving…';
+  try {
+    const res = await fetch('/api/settings/data_source', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({data_source: src})
+    });
+    const d = await res.json();
+    if (d.ok) {
+      status.style.color = 'var(--accent)';
+      status.innerText = `✅ Switched to ${src === 'viewpower' ? 'ViewPower' : 'Direct USB'} — restarting in 3s…`;
+      highlightDataSourceCard(src);
+      setTimeout(() => location.reload(), 3500);
+    } else {
+      status.style.color = '#f87171';
+      status.innerText = '❌ Failed to save';
+    }
+  } catch(e) {
+    status.style.color = '#f87171';
+    status.innerText = '❌ Error: ' + e;
+  }
+  btn.disabled = false;
+  btn.innerText = '💾 Apply & Restart';
+}
 
 async function loadCloudProfile() {
   try {
@@ -302,6 +357,23 @@ function applyStatus(d) {
     document.getElementById('status-badge').className = 'status-badge status-connected';
     document.getElementById('status-text').innerText = 'Connected';
     document.getElementById('last-update').innerText = 'Updated ' + d.last_update.substring(11,19);
+
+    // Show / hide Hardware Controls depending on data source
+    const hwSection  = document.getElementById('hardware-controls-section');
+    const hwSubtitle = document.getElementById('hw-controls-subtitle');
+    const isViewPower = d.data_source === 'viewpower';
+    if (hwSection) {
+      if (isViewPower) {
+        hwSection.style.opacity = '0.45';
+        hwSection.style.pointerEvents = 'none';
+        if (hwSubtitle) hwSubtitle.innerText = 'Unavailable in ViewPower mode';
+      } else {
+        hwSection.style.opacity = '';
+        hwSection.style.pointerEvents = '';
+        if (hwSubtitle) hwSubtitle.innerText = 'Direct USB command link active';
+      }
+    }
+
     
     setGauge(d.watts);
     
