@@ -50,6 +50,11 @@ jobs:
         run: echo "VERSION=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
+      - name: Download ViewPower Installer
+        run: |
+          Invoke-WebRequest -Uri "https://www.power-software-download.com/viewpower/installViewPower_Windows.zip" -OutFile "installViewPower_Windows.zip"
+        shell: pwsh
+
       - name: Upload installer to release
         uses: softprops/action-gh-release@v2
         with:
@@ -57,5 +62,6 @@ jobs:
           name: UPS Power Monitor ${{ github.ref_name }}
           files: |
             release/UPS-Power-Monitor-Setup-*.exe
+            installViewPower_Windows.zip
           draft: false
           prerelease: false
