@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.41"
+VERSION = "v2.0.42"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1062,19 +1062,6 @@ class DirectUPSClient:
         if not data:
             return None
             
-        # Try QBV to see if the hardware provides its own internal capacity
-        raw_qbv = self._query('QBV')
-        if raw_qbv:
-            text_qbv = raw_qbv.replace(b'\x00', b'').decode('ascii', errors='ignore')
-            m = re.search(r'\(([\d. ]+)\r?', text_qbv)
-            if m:
-                parts = m.group(1).split()
-                if len(parts) >= 4:
-                    try:
-                        data["hardware_battery_capacity"] = int(parts[3])
-                    except ValueError:
-                        pass
-                        
         # 1. Firmware Version (QVFW)
         raw_qvfw = self._query('QVFW')
         if raw_qvfw:
