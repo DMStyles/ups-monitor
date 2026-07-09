@@ -374,6 +374,39 @@ function applyStatus(d) {
       }
     }
 
+    // Faults Banner
+    const faultBanner = document.getElementById('fault-banner');
+    if (faultBanner) {
+      if (d.faults && d.faults.length > 0) {
+        faultBanner.style.display = 'flex';
+        document.getElementById('fault-banner-msg').innerText = 'UPS FAULT: ' + d.faults.join(', ');
+      } else {
+        faultBanner.style.display = 'none';
+      }
+    }
+
+    // Auto-detected wattage badge
+    const autoWattsBadge = document.getElementById('auto-watts-badge');
+    if (autoWattsBadge) {
+      if (d.rated_va && !isViewPower) {
+        autoWattsBadge.style.display = 'inline-block';
+      } else {
+        autoWattsBadge.style.display = 'none';
+      }
+    }
+
+    // Device Info
+    const devInfoSec = document.getElementById('device-info-section');
+    if (devInfoSec) {
+      if ((d.serial || d.firmware) && !isViewPower) {
+        devInfoSec.style.display = 'block';
+        document.getElementById('device-serial').innerText = d.serial || '----';
+        document.getElementById('device-firmware').innerText = d.firmware || '----';
+      } else {
+        devInfoSec.style.display = 'none';
+      }
+    }
+
     
     setGauge(d.watts);
     

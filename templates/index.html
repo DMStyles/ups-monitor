@@ -49,6 +49,14 @@
       </div>
     </header>
 
+    <!-- ── FAULT BANNER ── -->
+    <div id="fault-banner" class="update-banner" style="display:none; background: rgba(255,50,50,0.15); border: 1px solid rgba(255,50,50,0.5);">
+      <div class="update-banner-content" style="color: #ff5555; font-weight: bold;">
+        <span class="update-icon">⚠️</span>
+        <span class="update-message" id="fault-banner-msg">UPS FAULT: Overload</span>
+      </div>
+    </div>
+
     <!-- ── TAB NAV ── -->
     <nav class="tab-nav">
       <button class="tab-btn active" id="tab-btn-dashboard" onclick="switchTab('dashboard')">
@@ -78,7 +86,7 @@
             <div class="gauge-center">
               <div class="gauge-watts" id="gauge-watts">0</div>
               <div class="gauge-unit">Watts</div>
-              <div class="gauge-max" id="gauge-max-label">of 840 W max</div>
+              <div class="gauge-max" id="gauge-max-label">of 840 W max <span id="auto-watts-badge" style="display:none; font-size:0.6rem; background:rgba(0,255,100,0.15); color:#00ffa0; padding:2px 4px; border-radius:4px; margin-left:4px; vertical-align: middle;">Auto-detected</span></div>
             </div>
           </div>
           <div class="load-bar-wrap">
@@ -190,24 +198,45 @@
           </div>
         </section>
 
-        <!-- QUICK ACTIONS -->
-        <section class="quick-actions-card" id="hardware-controls-section">
-          <div class="quick-actions-title">
-            <span>⚡</span>
-            <div>
-              <strong>Hardware Controls</strong>
-              <div id="hw-controls-subtitle" style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">Direct USB command link active</div>
+        <!-- QUICK ACTIONS & DEVICE INFO -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <section class="quick-actions-card" id="hardware-controls-section">
+            <div class="quick-actions-title">
+              <span>⚡</span>
+              <div>
+                <strong>Hardware Controls</strong>
+                <div id="hw-controls-subtitle" style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">Direct USB command link active</div>
+              </div>
             </div>
-          </div>
-          <div class="quick-actions-buttons">
-            <button id="mute-btn" class="qa-btn mute-btn" onclick="sendUpsAction('mute')">
-              🔕 Mute Alarm
-            </button>
-            <button class="qa-btn test-btn" onclick="sendUpsAction('test')">
-              🔋 10s Self-Test
-            </button>
-          </div>
-        </section>
+            <div class="quick-actions-buttons">
+              <button id="mute-btn" class="qa-btn mute-btn" onclick="sendUpsAction('mute')">
+                🔕 Mute Alarm
+              </button>
+              <button class="qa-btn test-btn" onclick="sendUpsAction('test')">
+                🔋 10s Self-Test
+              </button>
+            </div>
+          </section>
+
+          <section class="card" id="device-info-section" style="display:none; padding: 15px 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:1.4rem;">🏷️</span>
+                <div>
+                  <div style="font-size:0.8rem; color:var(--text-dim);">Serial Number</div>
+                  <div id="device-serial" style="font-family: 'JetBrains Mono', monospace; font-size:1rem; font-weight:600; color:var(--text-light);">----</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:1.4rem;">💾</span>
+                <div>
+                  <div style="font-size:0.8rem; color:var(--text-dim);">Firmware</div>
+                  <div id="device-firmware" style="font-family: 'JetBrains Mono', monospace; font-size:1rem; font-weight:600; color:var(--text-light);">----</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <!-- HOURLY CHART -->
         <section class="card chart-card">

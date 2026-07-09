@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.38"
+VERSION = "v2.0.39"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1074,6 +1074,52 @@ class DirectUPSClient:
                         data["hardware_battery_capacity"] = int(parts[3])
                     except ValueError:
                         pass
+                        
+        # 1. Firmware Version (QVFW)
+        raw_qvfw = self._query('QVFW')
+        if raw_qvfw:
+            text_qvfw = raw_qvfw.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+            if text_qvfw.startswith('('):
+                data["firmware"] = text_qvfw.split(':')[-1].replace('\r', '').strip() if ':' in text_qvfw else text_qvfw[1:].replace('\r', '')
+                
+        # 2. Serial Number (QID)
+        raw_qid = self._query('QID')
+        if raw_qid:
+            text_qid = raw_qid.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+            if text_qid.startswith('(') and "NAK" not in text_qid:
+                data["serial"] = text_qid[1:].replace('\r', '').strip()
+                
+        # 3. Model Info / Rated Capacity (QMD)
+        raw_qmd = self._query('QMD')
+        if raw_qmd:
+            text_qmd = raw_qmd.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+            if text_qmd.startswith('('):
+                parts = text_qmd[1:].split()
+                if len(parts) >= 2:
+                    try:
+                        va_capacity = parts[1].split('#')[-1]
+                        data["rated_va"] = int(va_capacity)
+                    except ValueError:
+                        pass
+                        
+        # 4. Warning Status (QWS)
+        raw_qws = self._query('QWS')
+        if raw_qws:
+            text_qws = raw_qws.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+            if text_qws.startswith('('):
+                bits = text_qws[1:].replace('\r', '')
+                if len(bits) >= 8:
+                    faults = []
+                    if bits[0] == '1': faults.append("Battery Open")
+                    if bits[1] == '1': faults.append("Overload")
+                    if bits[2] == '1': faults.append("Short Circuit")
+                    if bits[3] == '1': faults.append("Inverter Fault")
+                    if bits[4] == '1': faults.append("Bus Fault")
+                    if bits[5] == '1': faults.append("Over Temperature")
+                    if bits[6] == '1': faults.append("Fan Fault")
+                    if bits[7] == '1': faults.append("Battery Over Voltage")
+                    data["faults"] = faults
+
         return data
 
     def send_command(self, cmd_str: str) -> bool:
@@ -1238,63 +1284,51 @@ def fast_poll_loop():
     _outage_start_time = None
 
     log.info("Fast poll loop started.")
-    # Charge tracking: set when power is restored after an outage.
-    # We use time-based estimation to climb back to 100% rather than
-    # instantly jumping, which is what ViewPower does.
-    _charge_start_pct  = None   # % when mains was restored
-    _charge_start_time = None   # datetime when mains was restored
-    # Prolink PRO1201SFC spec: 2-4h to 90%. We use 4h to 100% = 2.4 min/pct.
-    _MINS_PER_PCT = 2.4
     while True:
         try:
             data = ups_client.fetch()
             with state_lock:
                 if data:
-                    cfg    = get_model_cfg()
-                    watts  = round(cfg["max_watts"] * (data["load_percent"] / 100.0), 1)
+                    cfg = get_model_cfg()
                     on_bat = "battery" in (data.get("ups_mode") or "").lower()
                     is_test = data.get("ups_mode") == "Self-Test"
 
-                    # ── Battery % State Machine ────────────────────────────────
                     use_viewpower = settings.get("data_source", "direct") == "viewpower"
 
+                    # ── Max Watts Auto-Detect ────────────────────────────────
+                    if "rated_va" in data and not use_viewpower:
+                        # Auto-detect max watts assuming 0.6 power factor
+                        max_watts = int(data["rated_va"] * 0.6)
+                        data["max_watts"] = max_watts
+                    else:
+                        max_watts = cfg["max_watts"]
+                        data["max_watts"] = max_watts
+
+                    watts = round(max_watts * (data["load_percent"] / 100.0), 1)
+
+                    # ── Battery % State Machine ────────────────────────────────
                     if use_viewpower:
                         # ViewPower reports battery_capacity directly — trust it as-is.
-                        # No voltage math needed, no charge tracking needed.
                         pass
                     elif is_test:
-                        pass   # Self-Test: freeze at current ups_state value below
-                    elif on_bat:
-                        # ── Discharging: load-compensated voltage lookup + one-way ratchet ──
-                        new_pct = _voltage_to_pct(data["battery_voltage"], data["load_percent"], cfg)
-                        # Clamp: can only go down while discharging (blocks voltage noise bounce)
                         if "battery_capacity" in ups_state:
-                            new_pct = min(new_pct, ups_state["battery_capacity"])
-                        data["battery_capacity"] = new_pct
-                        # While on battery, charging is not in progress
-                        _charge_start_pct  = None
-                        _charge_start_time = None
+                            data["battery_capacity"] = ups_state["battery_capacity"]
                     else:
-                        # ── On mains: use time-based charging if returning from outage ──
-                        if _charge_start_pct is not None:
-                            elapsed_mins = (datetime.now() - _charge_start_time).total_seconds() / 60.0
-                            estimated_pct = int(min(100, _charge_start_pct + elapsed_mins / _MINS_PER_PCT))
-                            data["battery_capacity"] = estimated_pct
-                            if estimated_pct >= 100:
-                                _charge_start_pct  = None
-                                _charge_start_time = None
+                        if "hardware_battery_capacity" in data:
+                            data["battery_capacity"] = data.pop("hardware_battery_capacity")
                         else:
-                            data["battery_capacity"] = 100
+                            bat_blocks = cfg["bat_blocks"]
+                            v_bat_per_block = data["battery_voltage"] / bat_blocks
+                            new_pct = _vp_calculate_battery_capacity(v_bat_per_block, data["load_percent"], on_bat)
+                            
+                            # Clamp while discharging
+                            if on_bat and "battery_capacity" in ups_state:
+                                new_pct = min(new_pct, ups_state["battery_capacity"])
+                            
+                            data["battery_capacity"] = new_pct
 
-                    # During self-test (Direct mode only): freeze the percentage
-                    if not use_viewpower and is_test and "battery_capacity" in ups_state:
-                        data["battery_capacity"] = ups_state["battery_capacity"]
-
-                    rt = estimate_runtime(data["battery_capacity"], watts) if on_bat else None
+                    rt = estimate_runtime(data.get("battery_capacity", 100), watts) if on_bat else None
                     ct = None
-                    if not on_bat and not use_viewpower and _charge_start_pct is not None and data["battery_capacity"] < 100:
-                        mins_remaining = int((100 - data["battery_capacity"]) * _MINS_PER_PCT)
-                        ct = f"{mins_remaining // 60}h {mins_remaining % 60}m"
 
                     # ── Outage detection ──────────────────────
                     if on_bat and not _last_on_battery:
@@ -1714,9 +1748,11 @@ def _start_viewpower():
 def _stop_viewpower():
     log.info("Stopping ViewPower...")
     try:
+        # Kill the monitor apps
         subprocess.run('taskkill /F /IM ViewPower.exe', shell=True, capture_output=True)
         subprocess.run('taskkill /F /IM upsMonitor.exe', shell=True, capture_output=True)
-        subprocess.run('wmic process where "name=\'java.exe\' and ExecutablePath like \'%ViewPower%\'" call terminate', shell=True, capture_output=True)
+        # Kill any Java process running out of the ViewPower directory
+        subprocess.run('powershell -Command "Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -like \'*ViewPower*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"', shell=True, capture_output=True)
         log.info("ViewPower stopped.")
     except Exception as e:
         log.warning(f"Error stopping ViewPower: {e}")
