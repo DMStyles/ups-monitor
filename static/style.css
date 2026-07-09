@@ -186,6 +186,8 @@ body {
 .gauge-card  { grid-column: span 4; }
 .today-card  { grid-column: span 4; }
 .vitals-card { grid-column: span 4; }
+.controls-row { grid-column: span 12; display: flex; gap: 18px; align-items: stretch; }
+.controls-row > section { flex: 1; margin: 0; }
 .chart-card  { grid-column: span 7; }
 .week-card   { grid-column: span 5; }
 
@@ -193,11 +195,12 @@ body {
   .gauge-card  { grid-column: span 6; }
   .today-card  { grid-column: span 6; }
   .vitals-card { grid-column: span 12; }
+  .controls-row { grid-column: span 12; flex-direction: column; }
   .chart-card  { grid-column: span 12; }
   .week-card   { grid-column: span 12; }
 }
 @media (max-width: 680px) {
-  .gauge-card, .today-card, .vitals-card, .chart-card, .week-card { grid-column: span 12; }
+  .gauge-card, .today-card, .vitals-card, .controls-row, .chart-card, .week-card { grid-column: span 12; }
 }
 
 /* ── GAUGE ──────────────────────────────── */

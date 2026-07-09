@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.40"
+VERSION = "v2.0.41"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1753,6 +1753,16 @@ def _stop_viewpower():
         subprocess.run('taskkill /F /IM upsMonitor.exe', shell=True, capture_output=True)
         # Kill any Java process running out of the ViewPower directory
         subprocess.run('powershell -Command "Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -like \'*ViewPower*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"', shell=True, capture_output=True)
+        
+        # Remove ViewPower from Windows Startup so it doesn't auto-start on boot
+        try:
+            startup_path = Path(os.getenv("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "ViewPower.lnk"
+            if startup_path.exists():
+                startup_path.unlink()
+                log.info("Removed ViewPower.lnk from Windows Startup folder.")
+        except Exception as startup_e:
+            log.warning(f"Could not remove ViewPower from startup: {startup_e}")
+            
         log.info("ViewPower stopped.")
     except Exception as e:
         log.warning(f"Error stopping ViewPower: {e}")
