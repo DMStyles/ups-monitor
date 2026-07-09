@@ -52,7 +52,7 @@ jobs:
 
       - name: Download ViewPower Installer
         run: |
-          Invoke-WebRequest -Uri "https://www.power-software-download.com/viewpower/installViewPower_Windows.zip" -OutFile "installViewPower_Windows.zip"
+          Invoke-WebRequest -Uri "https://www.power-software-download.com/viewpower/ViewPower_win32.zip" -OutFile "ViewPower_win32.zip"
         shell: pwsh
 
       - name: Upload installer to release
@@ -62,6 +62,6 @@ jobs:
           name: UPS Power Monitor ${{ github.ref_name }}
           files: |
             release/UPS-Power-Monitor-Setup-*.exe
-            installViewPower_Windows.zip
+            ViewPower_win32.zip
           draft: false
           prerelease: false
