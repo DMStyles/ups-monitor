@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.47"
+VERSION = "v2.0.48"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -392,6 +392,15 @@ def init_db():
         duration_seconds  INTEGER,
         battery_at_start  INTEGER,
         battery_at_end    INTEGER
+    )""")
+    
+    c.execute("""CREATE TABLE IF NOT EXISTS outage_snapshots (
+        outage_id         INTEGER,
+        ts                TEXT NOT NULL,
+        battery_capacity  INTEGER,
+        battery_voltage   REAL,
+        watts             REAL,
+        FOREIGN KEY(outage_id) REFERENCES outages(id)
     )""")
     
     c.execute("""CREATE TABLE IF NOT EXISTS ceb_bills (
@@ -2326,7 +2335,7 @@ Recent Outages:
             
         system_prompt += f"\nRecent App Logs (for debugging):\n{app_logs}"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": user_prompt}]}],
