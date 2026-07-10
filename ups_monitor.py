@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.46"
+VERSION = "v2.0.47"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2315,6 +2315,16 @@ Recent Outages:
 """
         for o in outages:
             system_prompt += f"- {o[0]} (Duration: {o[1]}s)\n"
+
+        app_logs = "No logs available."
+        try:
+            if LOG_PATH.exists():
+                with open(LOG_PATH, 'r') as f:
+                    app_logs = "".join(f.readlines()[-30:])
+        except:
+            pass
+            
+        system_prompt += f"\nRecent App Logs (for debugging):\n{app_logs}"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         headers = {"Content-Type": "application/json"}
