@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.45"
+VERSION = "v2.0.46"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -124,6 +124,7 @@ DEFAULT_SETTINGS = {
     # Battery health
     "battery_replaced_date": "",   # ISO date e.g. "2023-01-15"
     "health_alert_sent":     False, # prevent repeated poor-health notifications
+    "gemini_api_key":        "",    # For Smart Assistant
 }
 
 settings: dict = {}
@@ -2272,6 +2273,66 @@ def on_closing():
         pass
     return False
 
+
+@flask_app.route("/api/ai/chat", methods=["POST"])
+def api_ai_chat():
+    global settings, ups_state
+    
+    api_key = settings.get("gemini_api_key", "").strip()
+    if not api_key:
+        return jsonify({"ok": False, "error": "Gemini API key is not configured in Settings."}), 400
+        
+    body = request.get_json(force=True)
+    user_prompt = body.get("message", "").strip()
+    if not user_prompt:
+        return jsonify({"ok": False, "error": "Message is empty."}), 400
+        
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        
+        c.execute("SELECT started_at, duration_seconds FROM outages ORDER BY started_at DESC LIMIT 5")
+        outages = c.fetchall()
+        
+        c.execute("SELECT watts, load_percent FROM readings ORDER BY ts DESC LIMIT 10")
+        recent_reads = c.fetchall()
+        avg_watts = sum(r[0] for r in recent_reads) / len(recent_reads) if recent_reads else 0
+        avg_load = sum(r[1] for r in recent_reads) / len(recent_reads) if recent_reads else 0
+        conn.close()
+        
+        system_prompt = f"""You are the AI Assistant built into 'UPS Power Monitor', a desktop app for a Voltronic/Megatec UPS.
+You must provide short, punchy, helpful answers in plain markdown. Do not use generic filler.
+Use emojis sparingly but effectively.
+Here is the real-time context of the user's UPS hardware:
+Model: {settings.get('ups_model', 'Unknown')}
+Current Status: {'On Battery' if ups_state.get('on_battery') else 'Online/Charging'}
+Current Load: {ups_state.get('watts', 0)}W ({ups_state.get('load_percent', 0)}%)
+Recent Avg Load: {avg_watts:.1f}W ({avg_load:.1f}%)
+Battery: {ups_state.get('battery_capacity', 0)}% ({ups_state.get('battery_voltage', 0)}V)
+Firmware: {ups_state.get('firmware', 'Unknown')}
+
+Recent Outages:
+"""
+        for o in outages:
+            system_prompt += f"- {o[0]} (Duration: {o[1]}s)\n"
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": user_prompt}]}],
+            "systemInstruction": {"parts": [{"text": system_prompt}]}
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+            return jsonify({"ok": True, "reply": reply})
+        else:
+            return jsonify({"ok": False, "error": f"Gemini API Error: {r.status_code} {r.text}"}), 400
+            
+    except Exception as e:
+        log.error(f"AI Chat error: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 def create_tray():
     global tray_icon

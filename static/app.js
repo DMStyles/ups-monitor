@@ -83,6 +83,10 @@ async function loadSettings() {
     document.getElementById('s-autostart').checked = !!settings.autostart;
     document.getElementById('s-battery-replaced').value = settings.battery_replaced_date || '';
     
+    if (document.getElementById('s-gemini')) {
+      document.getElementById('s-gemini').value = settings.gemini_api_key || '';
+    }
+    
     // Set version label from API response
     if (settings.version) {
       const el = document.getElementById('s-version');
@@ -282,6 +286,10 @@ async function saveSettings() {
     autostart:             document.getElementById('s-autostart').checked,
     battery_replaced_date: document.getElementById('s-battery-replaced').value,
   };
+  
+  if (document.getElementById('s-gemini')) {
+    payload.gemini_api_key = document.getElementById('s-gemini').value.trim();
+  }
 
   try {
     await fetch('/api/settings', { method: 'POST', body: JSON.stringify(payload) });
@@ -1010,4 +1018,77 @@ function initCloudAuth() {
   if (btnCloud) {
     btnCloud.addEventListener('click', signInCloud);
   }
+}
+
+// ══════════════════════════════════════════════════════
+//  AI ASSISTANT
+// ══════════════════════════════════════════════════════
+function parseMarkdown(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>')
+    .replace(/- (.*?)<br>/g, '<li>$1</li>')
+    .replace(/<li>/g, '<ul style="margin:0; padding-left:20px;"><li>')
+    .replace(/<\/li>(?!<li>)/g, '</li></ul>');
+}
+
+async function sendAiMessage() {
+  const input = document.getElementById('ai-input-box');
+  const btn = document.getElementById('ai-send-btn');
+  const log = document.getElementById('ai-chat-log');
+  
+  const msg = input.value.trim();
+  if (!msg) return;
+  
+  // Add User msg
+  input.value = '';
+  input.disabled = true;
+  btn.disabled = true;
+  btn.innerText = '...';
+  
+  const userDiv = document.createElement('div');
+  userDiv.className = 'ai-msg ai-msg-user';
+  userDiv.style = 'align-self:flex-end; background: var(--primary); color:#000; border-radius: 12px; border-bottom-right-radius: 2px; padding: 1rem; max-width:80%; font-weight:500;';
+  userDiv.innerText = msg;
+  log.appendChild(userDiv);
+  log.scrollTop = log.scrollHeight;
+  
+  try {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message: msg })
+    });
+    const data = await res.json();
+    
+    const aiDiv = document.createElement('div');
+    aiDiv.className = 'ai-msg ai-msg-system';
+    aiDiv.style = 'align-self:flex-start; background: rgba(14,165,233,0.1); border: 1px solid rgba(14,165,233,0.2); border-radius: 12px; border-bottom-left-radius: 2px; padding: 1rem; max-width:80%;';
+    
+    if (data.ok) {
+      aiDiv.innerHTML = parseMarkdown(data.reply);
+    } else {
+      aiDiv.style.background = 'rgba(239,68,68,0.1)';
+      aiDiv.style.borderColor = 'rgba(239,68,68,0.3)';
+      aiDiv.style.color = '#fca5a5';
+      aiDiv.innerText = "Error: " + (data.error || "Unknown error");
+    }
+    
+    log.appendChild(aiDiv);
+    log.scrollTop = log.scrollHeight;
+    
+  } catch (err) {
+    console.error(err);
+    const errDiv = document.createElement('div');
+    errDiv.style = 'align-self:flex-start; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; border-bottom-left-radius: 2px; padding: 1rem; color:#fca5a5; max-width:80%;';
+    errDiv.innerText = "Connection error. Make sure your API key is correct in Settings.";
+    log.appendChild(errDiv);
+  }
+  
+  input.disabled = false;
+  btn.disabled = false;
+  btn.innerText = 'Send';
+  input.focus();
+  log.scrollTop = log.scrollHeight;
 }
