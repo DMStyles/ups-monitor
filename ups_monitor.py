@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.42"
+VERSION = "v2.0.43"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1030,6 +1030,10 @@ class DirectUPSClient:
     VID = UPS_VID
     PID = UPS_PID
 
+    def __init__(self):
+        self._static_fetched = False
+        self._static_cache = {}
+
     def _query(self, cmd_str: str) -> bytes | None:
         try:
             dev = hid.device()
@@ -1062,50 +1066,64 @@ class DirectUPSClient:
         if not data:
             return None
             
-        # 1. Firmware Version (QVFW)
-        raw_qvfw = self._query('QVFW')
-        if raw_qvfw:
-            text_qvfw = raw_qvfw.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
-            if text_qvfw.startswith('('):
-                data["firmware"] = text_qvfw.split(':')[-1].replace('\r', '').strip() if ':' in text_qvfw else text_qvfw[1:].replace('\r', '')
-                
-        # 2. Serial Number (QID)
-        raw_qid = self._query('QID')
-        if raw_qid:
-            text_qid = raw_qid.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
-            if text_qid.startswith('(') and "NAK" not in text_qid:
-                data["serial"] = text_qid[1:].replace('\r', '').strip()
-                
-        # 3. Model Info / Rated Capacity (QMD)
-        raw_qmd = self._query('QMD')
-        if raw_qmd:
-            text_qmd = raw_qmd.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
-            if text_qmd.startswith('('):
-                parts = text_qmd[1:].split()
-                if len(parts) >= 2:
-                    try:
-                        va_capacity = parts[1].split('#')[-1]
-                        data["rated_va"] = int(va_capacity)
-                    except ValueError:
-                        pass
+        if not self._static_fetched:
+            # 1. Firmware Version (QVFW)
+            raw_qvfw = self._query('QVFW')
+            if raw_qvfw:
+                text_qvfw = raw_qvfw.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+                if text_qvfw.startswith('('):
+                    self._static_cache["firmware"] = text_qvfw.split(':')[-1].replace('\r', '').strip() if ':' in text_qvfw else text_qvfw[1:].replace('\r', '')
+                    
+            # 2. Serial Number (QID)
+            raw_qid = self._query('QID')
+            if raw_qid:
+                text_qid = raw_qid.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+                if text_qid.startswith('(') and "NAK" not in text_qid:
+                    self._static_cache["serial"] = text_qid[1:].replace('\r', '').strip()
+                    
+            # 3. Model Info / Rated Capacity (QMD)
+            raw_qmd = self._query('QMD')
+            if raw_qmd:
+                text_qmd = raw_qmd.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+                if text_qmd.startswith('('):
+                    parts = text_qmd[1:].split()
+                    if len(parts) >= 2:
+                        try:
+                            va_capacity = parts[1].split('#')[-1]
+                            self._static_cache["rated_va"] = int(va_capacity)
+                        except ValueError:
+                            pass
+            
+            self._static_fetched = True
+            
+        data.update(self._static_cache)
                         
-        # 4. Warning Status (QWS)
-        raw_qws = self._query('QWS')
-        if raw_qws:
-            text_qws = raw_qws.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
-            if text_qws.startswith('('):
-                bits = text_qws[1:].replace('\r', '')
-                if len(bits) >= 8:
-                    faults = []
-                    if bits[0] == '1': faults.append("Battery Open")
-                    if bits[1] == '1': faults.append("Overload")
-                    if bits[2] == '1': faults.append("Short Circuit")
-                    if bits[3] == '1': faults.append("Inverter Fault")
-                    if bits[4] == '1': faults.append("Bus Fault")
-                    if bits[5] == '1': faults.append("Over Temperature")
-                    if bits[6] == '1': faults.append("Fan Fault")
-                    if bits[7] == '1': faults.append("Battery Over Voltage")
-                    data["faults"] = faults
+        # 4. Warning Status (QWS) - Rate limited to every 5th loop (10s) to keep polling fast
+        if not hasattr(self, '_loop_count'):
+            self._loop_count = 0
+            self._faults_cache = []
+            
+        self._loop_count += 1
+        if self._loop_count % 5 == 1:
+            raw_qws = self._query('QWS')
+            if raw_qws:
+                text_qws = raw_qws.replace(b'\x00', b'').decode('ascii', errors='ignore').strip()
+                if text_qws.startswith('('):
+                    bits = text_qws[1:].replace('\r', '')
+                    if len(bits) >= 8:
+                        faults = []
+                        if bits[0] == '1': faults.append("Battery Open")
+                        if bits[1] == '1': faults.append("Overload")
+                        if bits[2] == '1': faults.append("Short Circuit")
+                        if bits[3] == '1': faults.append("Inverter Fault")
+                        if bits[4] == '1': faults.append("Bus Fault")
+                        if bits[5] == '1': faults.append("Over Temperature")
+                        if bits[6] == '1': faults.append("Fan Fault")
+                        if bits[7] == '1': faults.append("Battery Over Voltage")
+                        self._faults_cache = faults
+
+        if self._faults_cache:
+            data["faults"] = self._faults_cache
 
         return data
 
