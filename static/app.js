@@ -1132,7 +1132,7 @@ async function sendAiMessage(promptText) {
   
   const userDiv = document.createElement('div');
   userDiv.className = 'ai-msg ai-msg-user';
-  userDiv.style = 'align-self:flex-end; background: var(--primary); color:#000; border-radius: 12px; border-bottom-right-radius: 2px; padding: 1rem; max-width:80%; font-weight:500;';
+  userDiv.style = 'align-self:flex-end; background: var(--primary); color:#ffffff; border-radius: 12px; border-bottom-right-radius: 2px; padding: 1rem; max-width:80%; font-weight:500;';
   userDiv.innerText = msg;
   log.appendChild(userDiv);
   log.scrollTop = log.scrollHeight;

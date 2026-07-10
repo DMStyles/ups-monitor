@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.51"
+VERSION = "v2.0.52"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2425,8 +2425,8 @@ Recent Outages:
             last_status = r.status_code
             last_error = r.text
             
-            if r.status_code == 404:
-                log.warning(f"Gemini API: {model} returned 404. Trying next model...")
+            if r.status_code in (404, 429, 403):
+                log.warning(f"Gemini API: {model} returned {r.status_code}. Trying next model...")
                 continue
             else:
                 break
