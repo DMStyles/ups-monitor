@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.44"
+VERSION = "v2.0.45"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1044,13 +1044,20 @@ class DirectUPSClient:
             dev.write(packet)
 
             raw = b''
-            for _ in range(40):
+            empty_reads = 0
+            for _ in range(20): # max 4 seconds total
                 chunk = dev.read(8, timeout_ms=200)
                 if chunk:
+                    empty_reads = 0
                     raw += bytes(chunk)
                     if b'\r' in raw and b'(' in raw:
                         if raw.find(b'\r', raw.find(b'(')) != -1:
                             break
+                else:
+                    empty_reads += 1
+                    # Fail fast: if we get absolutely no bytes for 1 second, the UPS ignored the command
+                    if not raw and empty_reads >= 5:
+                        break
             dev.close()
             return raw
         except Exception as e:
