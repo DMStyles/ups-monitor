@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.50"
+VERSION = "v2.0.51"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2390,30 +2390,48 @@ Recent Outages:
             
         system_prompt += f"\nRecent App Logs (for debugging):\n{app_logs}"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
         headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": user_prompt}]}],
-            "systemInstruction": {"parts": [{"text": system_prompt}]}
-        }
-        r = requests.post(url, headers=headers, json=payload, timeout=15)
+        models_to_try = [
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-pro-latest",
+            "gemini-pro"
+        ]
         
-        # Fallback for API keys that don't have access to 1.5-flash
-        if r.status_code == 404:
-            log.warning("Gemini 1.5 Flash 404. Falling back to gemini-pro.")
-            url_fallback = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
-            # gemini-pro does not support systemInstruction, so we prepend it to the user prompt
-            payload_fallback = {
-                "contents": [{"parts": [{"text": system_prompt + "\n\nUser Question: " + user_prompt}]}]
-            }
-            r = requests.post(url_fallback, headers=headers, json=payload_fallback, timeout=15)
+        last_error = ""
+        last_status = 500
+        
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             
-        if r.status_code == 200:
-            data = r.json()
-            reply = data["candidates"][0]["content"]["parts"][0]["text"]
-            return jsonify({"ok": True, "reply": reply})
-        else:
-            return jsonify({"ok": False, "error": f"Gemini API Error: {r.status_code} {r.text}"}), 400
+            # gemini-pro does not support systemInstruction, prepend to user prompt
+            if model == "gemini-pro":
+                payload = {
+                    "contents": [{"parts": [{"text": system_prompt + "\n\nUser Question: " + user_prompt}]}]
+                }
+            else:
+                payload = {
+                    "contents": [{"parts": [{"text": user_prompt}]}],
+                    "systemInstruction": {"parts": [{"text": system_prompt}]}
+                }
+                
+            r = requests.post(url, headers=headers, json=payload, timeout=15)
+            
+            if r.status_code == 200:
+                data = r.json()
+                reply = data["candidates"][0]["content"]["parts"][0]["text"]
+                return jsonify({"ok": True, "reply": reply})
+            
+            last_status = r.status_code
+            last_error = r.text
+            
+            if r.status_code == 404:
+                log.warning(f"Gemini API: {model} returned 404. Trying next model...")
+                continue
+            else:
+                break
+                
+        return jsonify({"ok": False, "error": f"Gemini API Error: {last_status} {last_error}"}), 400
             
     except Exception as e:
         log.error(f"AI Chat error: {e}")
