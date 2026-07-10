@@ -65,9 +65,7 @@
       <button class="tab-btn" id="tab-btn-analytics" onclick="switchTab('analytics')">
         <span class="tab-icon">📈</span> Analytics
       </button>
-      <button class="tab-btn" id="tab-btn-ai" onclick="switchTab('ai')">
-        <span class="tab-icon">🤖</span> AI Assistant
-      </button>
+
       <button class="tab-btn" id="tab-btn-settings" onclick="switchTab('settings')">
         <span class="tab-icon">⚙️</span> Settings
       </button>
@@ -548,35 +546,7 @@
     </div><!-- /tab-analytics -->
 
 
-    <!-- ══════════════════════════════════════════════════════ -->
-    <!--  TAB: AI ASSISTANT                                     -->
-    <!-- ══════════════════════════════════════════════════════ -->
-    <div id="tab-ai" class="tab-panel">
-      <div class="ai-container card" style="display:flex; flex-direction:column; height: 75vh; padding:0; overflow:hidden;">
-        <div class="ai-header" style="padding: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.2);">
-          <h2 class="card-title" style="margin:0; font-size:1.4rem;">🤖 UPS Smart Assistant</h2>
-          <p style="color:var(--text-secondary); margin: 0.5rem 0 0 0; font-size:0.9rem;">Powered by Google Gemini. Ask me about your power usage, battery health, or outage history!</p>
-        </div>
-        
-        <div id="ai-chat-log" class="ai-chat-log" style="flex:1; overflow-y:auto; padding: 1.5rem; display:flex; flex-direction:column; gap: 1rem;">
-          <div class="ai-msg ai-msg-system" style="align-self:flex-start; background: rgba(14,165,233,0.1); border: 1px solid rgba(14,165,233,0.2); border-radius: 12px; border-bottom-left-radius: 2px; padding: 1rem; max-width:80%;">
-            Hello! I'm your AI Assistant. I have full context of your UPS hardware, real-time power draw, and outage history. How can I help you today?
-          </div>
-        </div>
-        <div class="ai-chips" style="padding: 0 1.5rem 1rem; display:flex; gap: 10px; overflow-x:auto;">
-          <button class="settings-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:6px 12px; font-size:0.85rem; white-space:nowrap;" onclick="sendAiMessage('Analyze my battery health and estimate its remaining lifespan based on the data.')">🔋 Battery Diagnostics</button>
-          <button class="settings-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:6px 12px; font-size:0.85rem; white-space:nowrap;" onclick="sendAiMessage('Give me a summary of my recent power outages and my average load.')">⚡ Outage Summary</button>
-          <button class="settings-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:6px 12px; font-size:0.85rem; white-space:nowrap;" onclick="sendAiMessage('Based on my current power draw, what can I do to extend my runtime during an outage?')">💡 Energy Saving Tips</button>
-        </div>
-
-        <div class="ai-input-area" style="padding: 1rem 1.5rem; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); display:flex; gap: 10px;">
-          <input type="text" id="ai-input-box" class="setting-input" style="flex:1; border-radius: 24px; padding-left: 20px;" placeholder="Type your message here..." onkeypress="if(event.key === 'Enter') sendAiMessage()" />
-          <button id="ai-send-btn" class="settings-btn settings-btn-primary" style="border-radius: 24px; padding: 10px 20px;" onclick="sendAiMessage()">Send</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════════════ -->
+    <!-- ──────────────────────────────────────────────────────── -->
     <!--  TAB: SETTINGS                               -->
     <!-- ══════════════════════════════════════════════════════ -->
     <div id="tab-settings" class="tab-panel">
@@ -821,50 +791,7 @@
           </div>
         </section>
 
-        <!-- AI Assistant -->
-        <section class="card settings-card">
-          <h2 class="card-title">🤖 AI Assistant Integration</h2>
-          
-          <div class="setting-group">
-            <label class="setting-label" for="s-ai-provider">AI Provider</label>
-            <div class="setting-input-row">
-              <select id="s-ai-provider" class="setting-input" onchange="toggleAIFields()">
-                <option value="gemini">Google Gemini (Cloud)</option>
-                <option value="ollama">Ollama (Local AI)</option>
-              </select>
-            </div>
-            <p class="setting-hint">Choose between cloud-based Gemini or a completely free local AI via Ollama.</p>
-          </div>
-          
-          <div class="setting-group" id="gemini-fields">
-            <label class="setting-label" for="s-gemini">Google Gemini API Key</label>
-            <div class="setting-input-row">
-              <input type="password" id="s-gemini" class="setting-input" placeholder="AIzaSy..." />
-            </div>
-            <p class="setting-hint">Get a free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--primary)">Google AI Studio</a>.</p>
-          </div>
-          
-          <div class="setting-group" id="ollama-fields" style="display: none;">
-            <label class="setting-label" for="s-ollama">Ollama Model</label>
-            <div class="setting-input-row">
-              <input type="text" id="s-ollama" class="setting-input" placeholder="e.g. llama3, phi3" />
-            </div>
-            <p class="setting-hint">Enter the name of the local model you have pulled in Ollama (e.g. <code>llama3</code>).</p>
-          </div>
-          
-          <script>
-            function toggleAIFields() {
-              const provider = document.getElementById('s-ai-provider').value;
-              if (provider === 'ollama') {
-                document.getElementById('gemini-fields').style.display = 'none';
-                document.getElementById('ollama-fields').style.display = 'block';
-              } else {
-                document.getElementById('gemini-fields').style.display = 'block';
-                document.getElementById('ollama-fields').style.display = 'none';
-              }
-            }
-          </script>
-        </section>
+
 
         <!-- Scheduled Maintenance -->
         <section class="card settings-card">
