@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.43"
+VERSION = "v2.0.44"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1333,7 +1333,23 @@ def fast_poll_loop():
                             data["battery_capacity"] = new_pct
 
                     rt = estimate_runtime(data.get("battery_capacity", 100), watts) if on_bat else None
+                    
                     ct = None
+                    if not on_bat and data.get("battery_capacity", 100) < 100:
+                        pct = data["battery_capacity"]
+                        # Bulk charge: 0-90% takes ~4 hours (240 mins) -> ~2.66 mins per %
+                        # Float charge: 90-100% takes ~2 hours (120 mins) -> 12 mins per %
+                        if pct < 90:
+                            mins_left = int((90 - pct) * 2.66) + 120
+                        else:
+                            mins_left = int((100 - pct) * 12)
+                            
+                        if mins_left >= 60:
+                            h = mins_left // 60
+                            m = mins_left % 60
+                            ct = f"{h}h {m}m" if m > 0 else f"{h}h"
+                        else:
+                            ct = f"{mins_left}m"
 
                     # ── Outage detection ──────────────────────
                     if on_bat and not _last_on_battery:
