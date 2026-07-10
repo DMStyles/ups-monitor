@@ -1,4 +1,4 @@
-let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltChart;
+let hourlyChart, weekChart, monthlyChart, detailChart, batVoltChart, inputVoltChart, outageSnapshotChart;
 let globalMaxWatts = 840;
 let fastPollInterval = 2000;
 let currentMonth = new Date().toISOString().slice(0, 7);
@@ -85,6 +85,9 @@ async function loadSettings() {
     
     if (document.getElementById('s-gemini')) {
       document.getElementById('s-gemini').value = settings.gemini_api_key || '';
+    }
+    if (document.getElementById('s-autotest')) {
+      document.getElementById('s-autotest').checked = !!settings.auto_test_enabled;
     }
     
     // Set version label from API response
@@ -289,6 +292,9 @@ async function saveSettings() {
   
   if (document.getElementById('s-gemini')) {
     payload.gemini_api_key = document.getElementById('s-gemini').value.trim();
+  }
+  if (document.getElementById('s-autotest')) {
+    payload.auto_test_enabled = document.getElementById('s-autotest').checked;
   }
 
   try {
@@ -629,6 +635,18 @@ function renderOutages() {
         <td>${o.ended_at ? 'Resolved' : '<span style="color:var(--warn)">Active</span>'}</td>
       </tr>`;
     }).join('');
+  }
+  
+  // Populate the High-Res Outage Inspector dropdown
+  const select = document.getElementById('outage-select');
+  if (select) {
+    const recent = allOutages.slice(0, 20); // Top 20 across all months
+    select.innerHTML = '<option value="">Select a recent outage to view graph...</option>' + 
+      recent.map(o => {
+        const d = new Date(o.started_at).toLocaleString();
+        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : 'Ongoing';
+        return `<option value="${o.id}">${d} (Duration: ${dur})</option>`;
+      }).join('');
   }
 }
 
@@ -1021,6 +1039,70 @@ function initCloudAuth() {
 }
 
 // ══════════════════════════════════════════════════════
+//  OUTAGE INSPECTOR
+// ══════════════════════════════════════════════════════
+async function loadOutageSnapshot() {
+  const sel = document.getElementById('outage-select');
+  if (!sel || !sel.value) return;
+  const oid = sel.value;
+  try {
+    const res = await fetch('/api/outages/' + oid + '/snapshots');
+    const data = await res.json();
+    if (outageSnapshotChart) {
+      outageSnapshotChart.destroy();
+    }
+    const ctx = document.getElementById('outageSnapshotChart').getContext('2d');
+    
+    if (data.length === 0) {
+      outageSnapshotChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [] } });
+      return;
+    }
+    
+    const labels = data.map(d => new Date(d.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    
+    outageSnapshotChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Battery %',
+            data: data.map(d => d.battery_capacity),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            yAxisID: 'y',
+            fill: true,
+            tension: 0.3
+          },
+          {
+            label: 'Load (W)',
+            data: data.map(d => d.watts),
+            borderColor: '#ef4444',
+            backgroundColor: 'transparent',
+            yAxisID: 'y1',
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Battery %', color:'rgba(255,255,255,0.7)' }, min: 0, max: 100, ticks:{color:'rgba(255,255,255,0.7)'} },
+          y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Watts', color:'rgba(255,255,255,0.7)' }, grid: { drawOnChartArea: false }, ticks:{color:'rgba(255,255,255,0.7)'} }
+        },
+        plugins: {
+          legend: { labels: { color: 'rgba(255,255,255,0.7)' } }
+        }
+      }
+    });
+  } catch(e) {
+    console.error("Failed to load snapshot", e);
+  }
+}
+
+// ══════════════════════════════════════════════════════
 //  AI ASSISTANT
 // ══════════════════════════════════════════════════════
 function parseMarkdown(text) {
@@ -1034,12 +1116,12 @@ function parseMarkdown(text) {
     .replace(/<\/li>(?!<li>)/g, '</li></ul>');
 }
 
-async function sendAiMessage() {
+async function sendAiMessage(promptText) {
   const input = document.getElementById('ai-input-box');
   const btn = document.getElementById('ai-send-btn');
   const log = document.getElementById('ai-chat-log');
   
-  const msg = input.value.trim();
+  const msg = promptText || input.value.trim();
   if (!msg) return;
   
   // Add User msg

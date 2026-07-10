@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.48"
+VERSION = "v2.0.49"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -125,6 +125,8 @@ DEFAULT_SETTINGS = {
     "battery_replaced_date": "",   # ISO date e.g. "2023-01-15"
     "health_alert_sent":     False, # prevent repeated poor-health notifications
     "gemini_api_key":        "",    # For Smart Assistant
+    "auto_test_enabled":     False,
+    "last_auto_test_date":   "",
 }
 
 settings: dict = {}
@@ -1487,8 +1489,24 @@ def fast_poll_loop():
                             daemon=True).start()
 
 
-                    _last_on_battery = on_bat
+                    # ── High-Res Outage Snapshots ──
+                    if on_bat and _outage_row_id:
+                        if not hasattr(fast_poll_loop, "snapshot_counter"):
+                            fast_poll_loop.snapshot_counter = 0
+                        fast_poll_loop.snapshot_counter += 1
+                        if fast_poll_loop.snapshot_counter >= 5:  # Every 5 loops (~10 seconds)
+                            fast_poll_loop.snapshot_counter = 0
+                            try:
+                                conn = sqlite3.connect(DB_PATH)
+                                c = conn.cursor()
+                                c.execute("INSERT INTO outage_snapshots (outage_id, ts, battery_capacity, battery_voltage, watts) VALUES (?, ?, ?, ?, ?)",
+                                          (_outage_row_id, datetime.now(timezone.utc).isoformat(), data["battery_capacity"], data["battery_voltage"], watts))
+                                conn.commit()
+                                conn.close()
+                            except Exception as e:
+                                log.error(f"Snapshot error: {e}")
 
+                    _last_on_battery = on_bat
                     ups_state.update({
                         "connected":        True,
                         "ups_mode":         data.get("ups_mode", "Unknown"),
@@ -1534,6 +1552,21 @@ def db_write_loop():
             if connected:
                 save_reading(snap)
                 log.debug(f"DB write: {snap['watts']}W bat:{snap['battery_capacity']}%")
+
+                # ── Scheduled Monthly Self-Test ──
+                try:
+                    if settings.get("auto_test_enabled", False):
+                        today = datetime.now()
+                        if today.day == 1 and not snap.get("on_battery"):
+                            last_test = settings.get("last_auto_test_date", "")
+                            if last_test != today.strftime("%Y-%m-%d"):
+                                log.info("Running monthly scheduled self-test...")
+                                if ups_client:
+                                    ups_client.send_command("T")
+                                settings["last_auto_test_date"] = today.strftime("%Y-%m-%d")
+                                save_settings(settings)
+                except Exception as te:
+                    log.error(f"Scheduled test error: {te}")
 
                 # ── Battery health notification (once per degradation event) ──
                 try:
@@ -1954,6 +1987,28 @@ def api_trends():
 @flask_app.route("/api/outages")
 def api_outages():
     return jsonify(get_outages())
+
+@flask_app.route("/api/outages/<int:outage_id>/snapshots")
+def api_outage_snapshots(outage_id):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT ts, battery_capacity, battery_voltage, watts FROM outage_snapshots WHERE outage_id = ? ORDER BY ts ASC", (outage_id,))
+        rows = c.fetchall()
+        conn.close()
+        
+        data = []
+        for r in rows:
+            data.append({
+                "ts": r[0],
+                "battery_capacity": r[1],
+                "battery_voltage": r[2],
+                "watts": r[3]
+            })
+        return jsonify(data)
+    except Exception as e:
+        log.error(f"Error fetching snapshots: {e}")
+        return jsonify([])
 
 
 @flask_app.route("/api/battery_health")

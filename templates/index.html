@@ -531,6 +531,19 @@
           Based on CEB Domestic Tariff D-2026/05 (May 2026). Actual bill may vary. Includes SSCL levy.
         </p>
       </section>
+      <!-- Outage Inspector -->
+      <section class="card analytics-section" style="margin-top: 1.5rem;">
+        <div class="analytics-header">
+          <h2 class="card-title" style="margin-bottom:0;">⚡ Outage Inspector (High-Res)</h2>
+          <select id="outage-select" class="settings-input" style="padding: 4px 8px; border-radius: 4px; font-size:0.9rem;" onchange="loadOutageSnapshot()">
+            <option value="">Select an outage...</option>
+          </select>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.5rem;">View high-resolution battery discharge graphs for your recent power outages.</p>
+        <div class="chart-wrapper" style="height:250px; margin-top:1rem;">
+          <canvas id="outageSnapshotChart"></canvas>
+        </div>
+      </section>
 
     </div><!-- /tab-analytics -->
 
@@ -549,6 +562,11 @@
           <div class="ai-msg ai-msg-system" style="align-self:flex-start; background: rgba(14,165,233,0.1); border: 1px solid rgba(14,165,233,0.2); border-radius: 12px; border-bottom-left-radius: 2px; padding: 1rem; max-width:80%;">
             Hello! I'm your AI Assistant. I have full context of your UPS hardware, real-time power draw, and outage history. How can I help you today?
           </div>
+        </div>
+        <div class="ai-chips" style="padding: 0 1.5rem 1rem; display:flex; gap: 10px; overflow-x:auto;">
+          <button class="settings-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:6px 12px; font-size:0.85rem; white-space:nowrap;" onclick="sendAiMessage('Analyze my battery health and estimate its remaining lifespan based on the data.')">🔋 Battery Diagnostics</button>
+          <button class="settings-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:6px 12px; font-size:0.85rem; white-space:nowrap;" onclick="sendAiMessage('Give me a summary of my recent power outages and my average load.')">⚡ Outage Summary</button>
+          <button class="settings-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:6px 12px; font-size:0.85rem; white-space:nowrap;" onclick="sendAiMessage('Based on my current power draw, what can I do to extend my runtime during an outage?')">💡 Energy Saving Tips</button>
         </div>
 
         <div class="ai-input-area" style="padding: 1rem 1.5rem; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05); display:flex; gap: 10px;">
@@ -812,6 +830,23 @@
               <input type="password" id="s-gemini" class="setting-input" placeholder="AIzaSy..." />
             </div>
             <p class="setting-hint">Get a free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--primary)">Google AI Studio</a> to enable the Smart Assistant.</p>
+          </div>
+        </section>
+
+        <!-- Scheduled Maintenance -->
+        <section class="card settings-card">
+          <h2 class="card-title">📅 Scheduled Maintenance</h2>
+          <div class="setting-group">
+            <div class="setting-toggle-row">
+              <div>
+                <div class="setting-label">Automated Monthly Self-Test</div>
+                <div class="setting-hint">Automatically run a 10-second battery health check on the 1st of every month to ensure reliability.</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="s-autotest" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
           </div>
         </section>
         <!-- Save button -->
