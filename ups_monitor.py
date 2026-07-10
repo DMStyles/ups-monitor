@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.52"
+VERSION = "v2.0.53"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2391,21 +2391,39 @@ Recent Outages:
         system_prompt += f"\nRecent App Logs (for debugging):\n{app_logs}"
 
         headers = {"Content-Type": "application/json"}
-        models_to_try = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-pro-latest",
-            "gemini-pro"
-        ]
         
-        last_error = ""
-        last_status = 500
+        # Dynamically fetch available models for this API key
+        models_to_try = []
+        try:
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            list_resp = requests.get(list_url, timeout=10)
+            if list_resp.status_code == 200:
+                models_data = list_resp.json().get("models", [])
+                for m in models_data:
+                    name = m.get("name", "").split("/")[-1]
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods and "gemini" in name.lower() and "vision" not in name.lower():
+                        models_to_try.append(name)
+                # Prioritize 1.5-flash, then 2.0-flash, then pro
+                models_to_try.sort(key=lambda x: (
+                    0 if "1.5-flash" in x else 
+                    1 if "2.0-flash" in x else 
+                    2 if "pro" in x else 3
+                ))
+        except Exception as e:
+            log.error(f"Error fetching models: {e}")
+            
+        if not models_to_try:
+            models_to_try = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
+            
+        best_error = None
+        best_status = None
         
         for model in models_to_try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             
-            # gemini-pro does not support systemInstruction, prepend to user prompt
-            if model == "gemini-pro":
+            # Legacy models do not support systemInstruction, prepend to user prompt
+            if "1.0-pro" in model or model == "gemini-pro":
                 payload = {
                     "contents": [{"parts": [{"text": system_prompt + "\n\nUser Question: " + user_prompt}]}]
                 }
@@ -2422,16 +2440,18 @@ Recent Outages:
                 reply = data["candidates"][0]["content"]["parts"][0]["text"]
                 return jsonify({"ok": True, "reply": reply})
             
-            last_status = r.status_code
-            last_error = r.text
+            # Prioritize saving a 429/403/400 (actual error) over a 404 (not found fallback)
+            if best_status is None or (r.status_code != 404 and best_status == 404):
+                best_status = r.status_code
+                best_error = r.text
             
-            if r.status_code in (404, 429, 403):
-                log.warning(f"Gemini API: {model} returned {r.status_code}. Trying next model...")
+            if r.status_code in (404, 429, 403, 500, 503):
+                log.warning(f"Gemini API: {model} returned {r.status_code}. Trying next...")
                 continue
             else:
                 break
                 
-        return jsonify({"ok": False, "error": f"Gemini API Error: {last_status} {last_error}"}), 400
+        return jsonify({"ok": False, "error": f"Gemini API Error: {best_status} {best_error}"}), 400
             
     except Exception as e:
         log.error(f"AI Chat error: {e}")
