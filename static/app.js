@@ -85,6 +85,9 @@ async function loadSettings() {
     
     if (document.getElementById('s-gemini')) {
       document.getElementById('s-gemini').value = settings.gemini_api_key || '';
+      document.getElementById('s-ollama').value = settings.ollama_model || 'llama3';
+      document.getElementById('s-ai-provider').value = settings.ai_provider || 'gemini';
+      if (typeof toggleAIFields === 'function') toggleAIFields();
     }
     if (document.getElementById('s-autotest')) {
       document.getElementById('s-autotest').checked = !!settings.auto_test_enabled;
@@ -292,6 +295,8 @@ async function saveSettings() {
   
   if (document.getElementById('s-gemini')) {
     payload.gemini_api_key = document.getElementById('s-gemini').value.trim();
+    payload.ollama_model = document.getElementById('s-ollama').value.trim();
+    payload.ai_provider = document.getElementById('s-ai-provider').value;
   }
   if (document.getElementById('s-autotest')) {
     payload.auto_test_enabled = document.getElementById('s-autotest').checked;

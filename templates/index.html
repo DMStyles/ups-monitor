@@ -824,13 +824,46 @@
         <!-- AI Assistant -->
         <section class="card settings-card">
           <h2 class="card-title">🤖 AI Assistant Integration</h2>
+          
           <div class="setting-group">
+            <label class="setting-label" for="s-ai-provider">AI Provider</label>
+            <div class="setting-input-row">
+              <select id="s-ai-provider" class="setting-input" onchange="toggleAIFields()">
+                <option value="gemini">Google Gemini (Cloud)</option>
+                <option value="ollama">Ollama (Local AI)</option>
+              </select>
+            </div>
+            <p class="setting-hint">Choose between cloud-based Gemini or a completely free local AI via Ollama.</p>
+          </div>
+          
+          <div class="setting-group" id="gemini-fields">
             <label class="setting-label" for="s-gemini">Google Gemini API Key</label>
             <div class="setting-input-row">
               <input type="password" id="s-gemini" class="setting-input" placeholder="AIzaSy..." />
             </div>
-            <p class="setting-hint">Get a free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--primary)">Google AI Studio</a> to enable the Smart Assistant.</p>
+            <p class="setting-hint">Get a free API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--primary)">Google AI Studio</a>.</p>
           </div>
+          
+          <div class="setting-group" id="ollama-fields" style="display: none;">
+            <label class="setting-label" for="s-ollama">Ollama Model</label>
+            <div class="setting-input-row">
+              <input type="text" id="s-ollama" class="setting-input" placeholder="e.g. llama3, phi3" />
+            </div>
+            <p class="setting-hint">Enter the name of the local model you have pulled in Ollama (e.g. <code>llama3</code>).</p>
+          </div>
+          
+          <script>
+            function toggleAIFields() {
+              const provider = document.getElementById('s-ai-provider').value;
+              if (provider === 'ollama') {
+                document.getElementById('gemini-fields').style.display = 'none';
+                document.getElementById('ollama-fields').style.display = 'block';
+              } else {
+                document.getElementById('gemini-fields').style.display = 'block';
+                document.getElementById('ollama-fields').style.display = 'none';
+              }
+            }
+          </script>
         </section>
 
         <!-- Scheduled Maintenance -->
