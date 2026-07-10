@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.0.49"
+VERSION = "v2.0.50"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2397,6 +2397,17 @@ Recent Outages:
             "systemInstruction": {"parts": [{"text": system_prompt}]}
         }
         r = requests.post(url, headers=headers, json=payload, timeout=15)
+        
+        # Fallback for API keys that don't have access to 1.5-flash
+        if r.status_code == 404:
+            log.warning("Gemini 1.5 Flash 404. Falling back to gemini-pro.")
+            url_fallback = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+            # gemini-pro does not support systemInstruction, so we prepend it to the user prompt
+            payload_fallback = {
+                "contents": [{"parts": [{"text": system_prompt + "\n\nUser Question: " + user_prompt}]}]
+            }
+            r = requests.post(url_fallback, headers=headers, json=payload_fallback, timeout=15)
+            
         if r.status_code == 200:
             data = r.json()
             reply = data["candidates"][0]["content"]["parts"][0]["text"]
