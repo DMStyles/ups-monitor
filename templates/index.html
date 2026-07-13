@@ -547,6 +547,11 @@
         </div>
 
         <div id="outage-chart-container" class="chart-wrapper" style="height:250px; margin-top:1rem; display:none;">
+          <div id="outage-no-data-msg" style="display:none; text-align:center; padding-top: 4rem; color:var(--text-secondary);">
+            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📉</div>
+            No high-resolution snapshots are available for this outage.<br>
+            <span style="font-size: 0.8rem; opacity: 0.7;">(It was either too short, or occurred before this feature was introduced)</span>
+          </div>
           <canvas id="outageSnapshotChart"></canvas>
         </div>
       </section>

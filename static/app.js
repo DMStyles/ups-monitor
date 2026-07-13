@@ -1063,13 +1063,20 @@ async function loadOutageSnapshot() {
     if (outageSnapshotChart) {
       outageSnapshotChart.destroy();
     }
-    const ctx = document.getElementById('outageSnapshotChart').getContext('2d');
+    const canvas = document.getElementById('outageSnapshotChart');
+    const msg = document.getElementById('outage-no-data-msg');
     
     if (data.length === 0) {
-      outageSnapshotChart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [] } });
+      canvas.style.display = 'none';
+      if(msg) msg.style.display = 'block';
+      outageSnapshotChart = new Chart(canvas.getContext('2d'), { type: 'line', data: { labels: [], datasets: [] } });
       return;
     }
     
+    canvas.style.display = 'block';
+    if(msg) msg.style.display = 'none';
+    
+    const ctx = canvas.getContext('2d');
     const labels = data.map(d => new Date(d.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     
     outageSnapshotChart = new Chart(ctx, {
