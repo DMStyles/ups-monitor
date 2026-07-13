@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.1.4"
+VERSION = "v2.1.5"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1286,16 +1286,24 @@ def _vp_calculate_battery_capacity(v_bat_per_block: float, load_pct: int, on_bat
         _vp_cur_time = 0.0
         
         if load_pct < 20:
-            if v_bat_per_block > 13.2:
-                return 100
-            if v_bat_per_block > 10.2:
-                return int(100.0 * (v_bat_per_block - 10.2) / 3.0)
+            if v_bat_per_block > 13.2: return 100
+            if v_bat_per_block > 10.2: return int(100.0 * (v_bat_per_block - 10.2) / 3.0)
+            return 0
+        elif load_pct < 50:
+            if v_bat_per_block > 12.7: return 100
+            if v_bat_per_block > 10.2: return int(100.0 * (v_bat_per_block - 10.2) / 2.5)
+            return 0
+        elif load_pct < 70:
+            if v_bat_per_block > 12.3: return 100
+            if v_bat_per_block > 10.1: return int(100.0 * (v_bat_per_block - 10.1) / 2.2)
+            return 0
+        elif load_pct < 90:
+            if v_bat_per_block > 12.1: return 100
+            if v_bat_per_block > 9.9:  return int(100.0 * (v_bat_per_block - 9.9) / 2.2)
             return 0
         else:
-            if v_bat_per_block > 12.7:
-                return 100
-            if v_bat_per_block > 10.2:
-                return int(100.0 * (v_bat_per_block - 10.2) / 2.5)
+            if v_bat_per_block > 11.9: return 100
+            if v_bat_per_block > 9.7:  return int(100.0 * (v_bat_per_block - 9.7) / 2.2)
             return 0
 
 
