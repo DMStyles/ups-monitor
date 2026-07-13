@@ -635,14 +635,30 @@ function renderOutages() {
   
   // Populate the High-Res Outage Inspector dropdown
   const select = document.getElementById('outage-select');
+  const emptyState = document.getElementById('outage-empty-state');
+  const chartContainer = document.getElementById('outage-chart-container');
+  const subtitle = document.getElementById('outage-subtitle');
+  
   if (select) {
     const recent = allOutages.slice(0, 20); // Top 20 across all months
-    select.innerHTML = '<option value="">Select a recent outage to view graph...</option>' + 
-      recent.map(o => {
-        const d = new Date(o.started_at).toLocaleString();
-        const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : 'Ongoing';
-        return `<option value="${o.id}">${d} (Duration: ${dur})</option>`;
-      }).join('');
+    if (recent.length === 0) {
+      select.style.display = 'none';
+      if(subtitle) subtitle.style.display = 'none';
+      if(emptyState) emptyState.style.display = 'block';
+      if(chartContainer) chartContainer.style.display = 'none';
+    } else {
+      select.style.display = 'block';
+      if(subtitle) subtitle.style.display = 'block';
+      if(emptyState) emptyState.style.display = 'none';
+      if(chartContainer) chartContainer.style.display = 'block';
+      
+      select.innerHTML = '<option value="">Select a recent outage to view graph...</option>' + 
+        recent.map(o => {
+          const d = new Date(o.started_at).toLocaleString();
+          const dur = o.duration_seconds ? Math.floor(o.duration_seconds/60) + 'm ' + (o.duration_seconds%60) + 's' : 'Ongoing';
+          return `<option value="${o.id}">${d} (Duration: ${dur})</option>`;
+        }).join('');
+    }
   }
 }
 
