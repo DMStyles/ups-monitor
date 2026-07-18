@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.1.5"
+VERSION = "v2.1.6"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1351,12 +1351,21 @@ def fast_poll_loop():
                             bat_blocks = cfg.get("bat_blocks", 2)
                             v_bat_per_block = data["battery_voltage"] / bat_blocks
                             new_pct = _vp_calculate_battery_capacity(v_bat_per_block, data["load_percent"], on_bat)
+                            # Smooth battery percentage changes to prevent sudden jumps from load-induced voltage sags
+                            if "battery_capacity" in ups_state:
+                                old_pct = ups_state["battery_capacity"]
+                                if on_bat:
+                                    # Heavy smoothing during discharge (takes ~45s to reflect a sudden voltage drop)
+                                    if new_pct < old_pct:
+                                        new_pct = (0.05 * new_pct) + (0.95 * old_pct)
+                                    else:
+                                        # Recover slightly faster if voltage bounces back after a surge
+                                        new_pct = (0.1 * new_pct) + (0.9 * old_pct)
+                                else:
+                                    # Light smoothing while charging
+                                    new_pct = (0.5 * new_pct) + (0.5 * old_pct)
                             
-                            # Clamp while discharging
-                            if on_bat and "battery_capacity" in ups_state:
-                                new_pct = min(new_pct, ups_state["battery_capacity"])
-                            
-                            data["battery_capacity"] = new_pct
+                            data["battery_capacity"] = round(new_pct, 1)
 
                     rt = estimate_runtime(data.get("battery_capacity", 100), watts) if on_bat else None
                     
