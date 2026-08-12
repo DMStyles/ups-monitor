@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.1.8"
+VERSION = "v2.1.9"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -195,6 +195,7 @@ _low_bat_notified  = False   # prevent repeated low-battery pings
 _high_load_notified = False
 _shutdown_triggered = False
 _outage_start_time  = None
+_outage_start_monotonic = None
 _below_shutdown_pct_time = None
 
 # ══════════════════════════════════════════════════════
@@ -491,25 +492,18 @@ def record_outage_start(battery_pct: int) -> int | None:
         log.error(f"Outage start error: {e}")
 
 
-def record_outage_end(battery_pct: int):
+def record_outage_end(battery_pct: int, duration_sec: int = 0):
     global _outage_row_id
     if _outage_row_id is None:
         return
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT started_at FROM outages WHERE id=?", (_outage_row_id,))
-        row = c.fetchone()
-        if row:
-            start_dt = datetime.fromisoformat(row[0])
-            now_utc = datetime.now(timezone.utc)
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=timezone.utc)
-            duration = int((now_utc - start_dt).total_seconds())
-            c.execute("""UPDATE outages SET ended_at=?, duration_seconds=?, battery_at_end=?
-                         WHERE id=?""",
-                      (now_utc.isoformat(), duration, battery_pct, _outage_row_id))
-            conn.commit()
+        now_utc = datetime.now(timezone.utc)
+        c.execute("""UPDATE outages SET ended_at=?, duration_seconds=?, battery_at_end=?
+                     WHERE id=?""",
+                  (now_utc.isoformat(), duration_sec, battery_pct, _outage_row_id))
+        conn.commit()
         conn.close()
     except Exception as e:
         log.error(f"Outage end error: {e}")
@@ -1310,10 +1304,11 @@ def _vp_calculate_battery_capacity(v_bat_per_block: float, load_pct: int, on_bat
 
 def fast_poll_loop():
     """Updates in-memory UPS state every ~2 s. Handles outage detection + notifications."""
-    global _last_on_battery, _low_bat_notified, _high_load_notified, _shutdown_triggered, _outage_start_time, _below_shutdown_pct_time
+    global _last_on_battery, _low_bat_notified, _high_load_notified, _shutdown_triggered, _outage_start_time, _below_shutdown_pct_time, _outage_start_monotonic
     _high_load_notified = False
     _shutdown_triggered = False
     _outage_start_time = None
+    _outage_start_monotonic = None
     _below_shutdown_pct_time = None
 
     log.info("Fast poll loop started.")
@@ -1394,6 +1389,7 @@ def fast_poll_loop():
                         _low_bat_notified = False
                         _high_load_notified = False
                         _outage_start_time = datetime.now()
+                        _outage_start_monotonic = time.monotonic()
                         log.warning(f"POWER OUTAGE — battery {data['battery_capacity']}%")
                         threading.Thread(
                             target=notify,
@@ -1405,10 +1401,13 @@ def fast_poll_loop():
 
 
                     elif not on_bat and _last_on_battery:
-                        record_outage_end(data["battery_capacity"])
+                        duration_sec = int(time.monotonic() - _outage_start_monotonic) if _outage_start_monotonic else 0
+                        # Record the LAST battery percentage from before AC power spiked the voltage
+                        record_outage_end(ups_state.get("battery_capacity", data["battery_capacity"]), duration_sec)
                         _low_bat_notified = False
                         _high_load_notified = False
                         _outage_start_time = None
+                        _outage_start_monotonic = None
                         # Start charge tracking from the current depleted level
                         _charge_start_pct  = data["battery_capacity"]
                         _charge_start_time = datetime.now()
