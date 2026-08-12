@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.1.6"
+VERSION = "v2.1.7"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -195,6 +195,7 @@ _low_bat_notified  = False   # prevent repeated low-battery pings
 _high_load_notified = False
 _shutdown_triggered = False
 _outage_start_time  = None
+_below_shutdown_pct_time = None
 
 # ══════════════════════════════════════════════════════
 #  WINDOWS AUTOSTART  (Task Scheduler — most reliable)
@@ -1309,10 +1310,11 @@ def _vp_calculate_battery_capacity(v_bat_per_block: float, load_pct: int, on_bat
 
 def fast_poll_loop():
     """Updates in-memory UPS state every ~2 s. Handles outage detection + notifications."""
-    global _last_on_battery, _low_bat_notified, _high_load_notified, _shutdown_triggered, _outage_start_time
+    global _last_on_battery, _low_bat_notified, _high_load_notified, _shutdown_triggered, _outage_start_time, _below_shutdown_pct_time
     _high_load_notified = False
     _shutdown_triggered = False
     _outage_start_time = None
+    _below_shutdown_pct_time = None
 
     log.info("Fast poll loop started.")
     while True:
@@ -1434,10 +1436,15 @@ def fast_poll_loop():
                     if on_bat and settings.get("auto_shutdown_enabled", False) and not _shutdown_triggered:
                         trigger_shutdown = False
                         
-                        # Check Battery Percentage Trigger
+                        # Check Battery Percentage Trigger (with 30s debounce to avoid false triggers during voltage sags)
                         if data["battery_capacity"] <= settings.get("auto_shutdown_pct", 10):
-                            trigger_shutdown = True
-                            reason = f"Battery dropped to {data['battery_capacity']}%"
+                            if _below_shutdown_pct_time is None:
+                                _below_shutdown_pct_time = datetime.now()
+                            elif (datetime.now() - _below_shutdown_pct_time).total_seconds() >= 30:
+                                trigger_shutdown = True
+                                reason = f"Battery dropped to {data['battery_capacity']}% for 30 seconds"
+                        else:
+                            _below_shutdown_pct_time = None
                             
                         # Check Outage Duration Trigger
                         elif settings.get("auto_shutdown_mins", 0) > 0 and _outage_start_time:
