@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.1.7"
+VERSION = "v2.1.8"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1447,7 +1447,7 @@ def fast_poll_loop():
                             _below_shutdown_pct_time = None
                             
                         # Check Outage Duration Trigger
-                        elif settings.get("auto_shutdown_mins", 0) > 0 and _outage_start_time:
+                        if not trigger_shutdown and settings.get("auto_shutdown_mins", 0) > 0 and _outage_start_time:
                             outage_mins = (datetime.now() - _outage_start_time).total_seconds() / 60.0
                             if outage_mins >= settings.get("auto_shutdown_mins", 5):
                                 trigger_shutdown = True
