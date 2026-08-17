@@ -100,6 +100,56 @@ def sync_settings_to_cloud(settings_dict):
 
 last_sync_time = None
 
+def pull_cloud_data_to_local(db_path):
+    """Downloads historical outages, bills, and recent readings to a fresh local DB."""
+    global sync_enabled, supabase
+    if not sync_enabled or not supabase:
+        return
+    log.info("Pulling historical cloud data to local database...")
+    try:
+        # Fetch Outages
+        res = supabase.table("outages").select("*").execute()
+        if res.data:
+            with sqlite3.connect(db_path) as conn:
+                c = conn.cursor()
+                for r in res.data:
+                    c.execute("""INSERT OR IGNORE INTO outages 
+                                 (id, started_at, ended_at, duration_seconds, battery_at_start, battery_at_end)
+                                 VALUES (?, ?, ?, ?, ?, ?)""",
+                              (r.get("id"), r.get("started_at"), r.get("ended_at"), r.get("duration_seconds"),
+                               r.get("battery_at_start"), r.get("battery_at_end")))
+                conn.commit()
+
+        # Fetch CEB Bills
+        res = supabase.table("ceb_bills").select("*").execute()
+        if res.data:
+            with sqlite3.connect(db_path) as conn:
+                c = conn.cursor()
+                for r in res.data:
+                    c.execute("""INSERT OR REPLACE INTO ceb_bills 
+                                 (month, amount_lkr, calculated_kwh, ups_kwh)
+                                 VALUES (?, ?, ?, ?)""",
+                              (r.get("month"), r.get("amount_lkr"), r.get("calculated_kwh"), r.get("ups_kwh")))
+                conn.commit()
+
+        # Fetch Readings (last 3000)
+        res = supabase.table("readings").select("*").order("ts", desc=True).limit(3000).execute()
+        if res.data:
+            with sqlite3.connect(db_path) as conn:
+                c = conn.cursor()
+                for r in reversed(res.data):
+                    c.execute("""INSERT OR IGNORE INTO readings 
+                                 (id, ts, date, input_voltage, output_voltage, frequency, load_percent, watts, battery_voltage, battery_capacity, ups_mode, temperature)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                              (r.get("id"), r.get("ts"), r.get("date"), r.get("input_voltage"), r.get("output_voltage"),
+                               r.get("frequency"), r.get("load_percent"), r.get("watts"), r.get("battery_voltage"),
+                               r.get("battery_capacity"), r.get("ups_mode"), r.get("temperature")))
+                conn.commit()
+                
+        log.info("Successfully pulled historical cloud data to local database.")
+    except Exception as e:
+        log.error(f"Failed to pull cloud database: {e}")
+
 def sync_worker(db_path):
     global sync_enabled, last_sync_time
     while True:

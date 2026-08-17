@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.2.0"
+VERSION = "v2.3.0"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2291,6 +2291,10 @@ def api_set_supabase_token():
                             settings[k] = cloud_settings[k]
                     save_settings(settings)
                     log.info("Merged settings from Supabase cloud backup")
+                
+                # Fetch historical databases from cloud
+                supabase_sync.pull_cloud_data_to_local(DB_PATH)
+                
         except Exception as e:
             log.warning(f"supabase_sync.set_supabase_session failed: {e}")
     return jsonify({"ok": True})
