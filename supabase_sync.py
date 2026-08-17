@@ -171,7 +171,7 @@ def sync_readings(db_path):
         c.execute('''SELECT ts, date, input_voltage, output_voltage, frequency, 
                             load_percent, watts, battery_voltage, battery_capacity, 
                             ups_mode, temperature 
-                     FROM readings ORDER BY ts DESC LIMIT 50''')
+                     FROM readings ORDER BY ts DESC LIMIT 500''')
         rows = c.fetchall()
         
     for r in rows[::-1]:
@@ -200,7 +200,7 @@ def sync_outages(db_path):
         c = conn.cursor()
         c.execute('''SELECT id, started_at, ended_at, duration_seconds, 
                             battery_at_start, battery_at_end 
-                     FROM outages ORDER BY started_at DESC LIMIT 10''')
+                     FROM outages ORDER BY started_at DESC LIMIT 1000''')
         rows = c.fetchall()
         
     for r in rows:
