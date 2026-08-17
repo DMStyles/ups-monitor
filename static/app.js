@@ -1133,12 +1133,212 @@ function parseMarkdown(text) {
     .replace(/- (.*?)<br>/g, '<li>$1</li>')
     .replace(/<li>/g, '<ul style="margin:0; padding-left:20px;"><li>')
     .replace(/<\/li>(?!<li>)/g, '</li></ul>');
+  detailChart = new Chart(ctxDetail, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Avg Watts', data: [], borderColor: '#00b4ff', backgroundColor: gradB, fill: true, tension: 0.4 },
+      { label: 'Peak Watts', data: [], borderColor: '#ffc542', borderDash: [5,5], fill: false, tension: 0.4 }
+    ]},
+    options: commonOpts
+  });
+
+  const ctxBat = document.getElementById('batVoltChart').getContext('2d');
+  batVoltChart = new Chart(ctxBat, {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Battery V', data: [], borderColor: '#ff5252', tension: 0.2 }] },
+    options: { ...commonOpts, scales: { y: { min: 20 } } }
+  });
+
+  const ctxInp = document.getElementById('inputVoltChart').getContext('2d');
+  inputVoltChart = new Chart(ctxInp, {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Input V', data: [], borderColor: '#7c4dff', tension: 0.2 }] },
+    options: { ...commonOpts, scales: { y: { min: 200, max: 260 } } }
+  });
+}
+
+// Boot
+window.onload = () => {
+  initDashboard();
+  setTimeout(checkUpdateQuietly, 5000);
+
+  // Create SVG Gradient for Gauge
+  const svgNS = "http://www.w3.org/2000/svg";
+  const defs = document.createElementNS(svgNS, 'defs');
+  const grad = document.createElementNS(svgNS, 'linearGradient');
+  grad.setAttribute('id', 'gaugeGrad'); grad.setAttribute('x1', '0%'); grad.setAttribute('y1', '0%'); grad.setAttribute('x2', '100%'); grad.setAttribute('y2', '0%');
+  const stop1 = document.createElementNS(svgNS, 'stop'); stop1.setAttribute('offset', '0%'); stop1.setAttribute('stop-color', '#00b4ff');
+  const stop2 = document.createElementNS(svgNS, 'stop'); stop2.setAttribute('offset', '100%'); stop2.setAttribute('stop-color', '#00e5a0');
+  grad.appendChild(stop1); grad.appendChild(stop2); defs.appendChild(grad);
+  document.querySelector('.gauge-svg').prepend(defs);
+};
+
+function sendUpsAction(action) {
+  fetch('/api/ups/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action })
+  })
+  .then(res => res.json())
+  .then(data => {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toast-msg');
+    toast.className = 'toast show ' + (data.status === 'ok' ? 'success' : 'error');
+    toastMsg.innerText = data.message;
+    setTimeout(() => { toast.classList.remove('show'); }, 3000);
+  })
+  .catch(err => console.error('UPS Action error:', err));
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOUD SYNC (Initiated via Backend OAuth Callback)
+// ─────────────────────────────────────────────────────────────────────────────
+async function signInCloud() {
+  const btnCloud = document.getElementById('btn-cloud-login');
+  const btnSettings = document.querySelector('#cloud-not-signed-in .settings-btn-primary');
+  
+  try {
+    if (btnCloud) {
+      btnCloud.disabled = true;
+      btnCloud.innerText = 'Opening browser...';
+    }
+    if (btnSettings) {
+      btnSettings.disabled = true;
+      btnSettings.innerText = 'Opening browser...';
+    }
+
+    const res = await fetch('/api/cloud/login', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      if (btnCloud) btnCloud.innerText = 'Waiting for sign-in...';
+      if (btnSettings) btnSettings.innerText = 'Waiting for sign-in...';
+    } else {
+      if (btnCloud) {
+        btnCloud.disabled = false;
+        btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
+      }
+      if (btnSettings) {
+        btnSettings.disabled = false;
+        btnSettings.innerText = 'Sign in with Google';
+      }
+      alert('Failed to initiate login.');
+    }
+  } catch (e) {
+    console.warn('Cloud login error', e);
+    if (btnCloud) {
+      btnCloud.disabled = false;
+      btnCloud.innerHTML = '<i class="ph ph-cloud"></i> Sign in to Cloud';
+    }
+    if (btnSettings) {
+      btnSettings.disabled = false;
+      btnSettings.innerText = 'Sign in with Google';
+    }
+  }
+}
+
+function initCloudAuth() {
+  const btnCloud = document.getElementById('btn-cloud-login');
+  if (btnCloud) {
+    btnCloud.addEventListener('click', signInCloud);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  OUTAGE INSPECTOR
+// ══════════════════════════════════════════════════════
+async function loadOutageSnapshot() {
+  const sel = document.getElementById('outage-select');
+  if (!sel || !sel.value) return;
+  const oid = sel.value;
+  try {
+    const res = await fetch('/api/outages/' + oid + '/snapshots');
+    const data = await res.json();
+    if (outageSnapshotChart) {
+      outageSnapshotChart.destroy();
+    }
+    const canvas = document.getElementById('outageSnapshotChart');
+    const msg = document.getElementById('outage-no-data-msg');
+    
+    if (data.length === 0) {
+      canvas.style.display = 'none';
+      if(msg) msg.style.display = 'block';
+      outageSnapshotChart = new Chart(canvas.getContext('2d'), { type: 'line', data: { labels: [], datasets: [] } });
+      return;
+    }
+    
+    canvas.style.display = 'block';
+    if(msg) msg.style.display = 'none';
+    
+    const ctx = canvas.getContext('2d');
+    const labels = data.map(d => new Date(d.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    
+    outageSnapshotChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Battery %',
+            data: data.map(d => d.battery_capacity),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            yAxisID: 'y',
+            fill: true,
+            tension: 0.3
+          },
+          {
+            label: 'Load (W)',
+            data: data.map(d => d.watts),
+            borderColor: '#ef4444',
+            backgroundColor: 'transparent',
+            yAxisID: 'y1',
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Battery %', color:'rgba(255,255,255,0.7)' }, min: 0, max: 100, ticks:{color:'rgba(255,255,255,0.7)'} },
+          y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Watts', color:'rgba(255,255,255,0.7)' }, grid: { drawOnChartArea: false }, ticks:{color:'rgba(255,255,255,0.7)'} }
+        },
+        plugins: {
+          legend: { labels: { color: 'rgba(255,255,255,0.7)' } }
+        }
+      }
+    });
+  } catch(e) {
+    console.error("Failed to load snapshot", e);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  AI ASSISTANT
+// ══════════════════════════════════════════════════════
+function parseMarkdown(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>')
+    .replace(/- (.*?)<br>/g, '<li>$1</li>')
+    .replace(/<li>/g, '<ul style="margin:0; padding-left:20px;"><li>')
+    .replace(/<\/li>(?!<li>)/g, '</li></ul>');
 }
 
 
 
 async function wipeLocalData() {
-  if (!confirm('?? WARNING: This will permanently delete all local outages, history, and graphs!\n\nAre you absolutely sure you want to wipe the local database?')) return;
+  if (!confirm('⚠️ WARNING: This will permanently delete all local outages, history, and graphs!\n\nAre you absolutely sure you want to wipe the local database?')) return;
+  const challenge = prompt('To confirm, please type WIPE exactly as shown:');
+  if (challenge !== 'WIPE') {
+    alert('Wipe cancelled.');
+    return;
+  }
   try {
     const res = await fetch('/api/wipe-local-data', { method: 'POST' });
     const data = await res.json();
