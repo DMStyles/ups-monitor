@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.3.0"
+VERSION = "v2.3.1"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -2314,6 +2314,30 @@ def api_cloud_user():
         })
     except Exception as e:
         return jsonify({"signed_in": False, "name": "", "email": "", "avatar_url": "", "last_sync": ""})
+@flask_app.route("/api/wipe-local-data", methods=["POST"])
+def api_wipe_local_data():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM readings")
+        c.execute("DELETE FROM outages")
+        c.execute("DELETE FROM outage_snapshots")
+        c.execute("DELETE FROM ceb_bills")
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@flask_app.route("/api/sync-from-cloud", methods=["POST"])
+def api_sync_from_cloud():
+    try:
+        import supabase_sync
+        supabase_sync.pull_cloud_data_to_local(DB_PATH)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @flask_app.route("/api/cloud_signout", methods=["POST"])

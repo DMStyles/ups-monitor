@@ -822,6 +822,22 @@
             </div>
           </div>
         </section>
+
+        <!-- Data Management -->
+        <section class="card settings-card">
+          <h2 class="card-title" style="color:var(--danger)">🗑️ Local Data Management</h2>
+          <p style="color:var(--text-dim); font-size:0.875rem; margin:0 0 16px 0;">
+            Manage your local SQLite database. Warning: Wiping data cannot be undone unless you have synced it to the cloud.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <button class="settings-btn" style="background:rgba(255,82,82,0.12); color:#ff5252; border:1px solid rgba(255,82,82,0.3);" onclick="wipeLocalData()">
+              🗑️ Wipe Local Database
+            </button>
+            <button class="settings-btn settings-btn-primary" onclick="forceCloudSync()">
+              ☁️ Force Restore from Cloud
+            </button>
+          </div>
+        </section>
         <!-- Save button -->
         <div class="settings-save-row">
           <button class="settings-btn settings-btn-primary settings-btn-save" onclick="saveSettings()" id="save-settings-btn">

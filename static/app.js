@@ -1136,3 +1136,40 @@ function parseMarkdown(text) {
 }
 
 
+
+async function wipeLocalData() {
+  if (!confirm('?? WARNING: This will permanently delete all local outages, history, and graphs!\n\nAre you absolutely sure you want to wipe the local database?')) return;
+  try {
+    const res = await fetch('/api/wipe-local-data', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      alert('Local data wiped successfully.');
+      window.location.reload();
+    }
+  } catch (e) {
+    alert('Failed to wipe local data: ' + e);
+  }
+}
+
+async function forceCloudSync() {
+  if (!confirm('This will download all historical data from your Supabase cloud account and merge it into your local database.\n\nProceed?')) return;
+  try {
+    const btn = document.querySelector('button[onclick="forceCloudSync()"]');
+    btn.innerText = '?? Syncing...';
+    btn.disabled = true;
+    const res = await fetch('/api/sync-from-cloud', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      alert('Cloud data restored successfully.');
+      window.location.reload();
+    } else {
+      alert('Failed to sync: ' + data.error);
+    }
+  } catch (e) {
+    alert('Failed to sync: ' + e);
+  } finally {
+    const btn = document.querySelector('button[onclick="forceCloudSync()"]');
+    btn.innerText = '?? Force Restore from Cloud';
+    btn.disabled = false;
+  }
+}
