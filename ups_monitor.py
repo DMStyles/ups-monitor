@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.3.5"
+VERSION = "v2.3.6"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -535,15 +535,16 @@ def get_daily_stats(target_date: str = None) -> dict:
             w0, t0 = rows[i - 1]
             _,  t1 = rows[i]
             dt = (_parse_local_ts(t1) - _parse_local_ts(t0)).total_seconds()
-            if dt <= MAX_READING_GAP:   # skip gaps — PC/app was off
+            if 0 <= dt <= MAX_READING_GAP:   # skip gaps — PC/app was off
                 kwh += (w0 / 1000.0) * (dt / 3600.0)
 
         # Partial interval from last reading to now (only for today)
         if rows and target_date == date.today().isoformat():
             last_w, last_t = rows[-1]
             dt = (datetime.now() - _parse_local_ts(last_t)).total_seconds()
-            dt = min(dt, settings.get("db_write_interval", 60) * 1.5)
-            kwh += (last_w / 1000.0) * (dt / 3600.0)
+            if dt > 0:
+                dt = min(dt, settings.get("db_write_interval", 60) * 1.5)
+                kwh += (last_w / 1000.0) * (dt / 3600.0)
 
         # Estimate CEB cost for today by projecting to 30 days
         projected_monthly_kwh = kwh * 30.0
@@ -2593,6 +2594,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
