@@ -1,12 +1,3 @@
-def _parse_local_ts(ts_str: str) -> datetime:
-    try:
-        dt = datetime.fromisoformat(ts_str)
-        if dt.tzinfo is not None:
-            dt = dt.astimezone().replace(tzinfo=None)
-        return dt
-    except Exception:
-        return datetime.now()
-
 """
 UPS Power Monitor v2.0.5
 Standalone Windows desktop app — monitors UPS directly via USB HID (Megatec/Voltronic protocol).
@@ -38,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.3.4"
+VERSION = "v2.3.5"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -520,6 +511,15 @@ def record_outage_end(battery_pct: int, duration_sec: int = 0):
 
 
 # ── Query helpers ───────────────────────────────────
+def _parse_local_ts(ts_str: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(ts_str)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
+    except Exception:
+        return datetime.now()
+
 def get_daily_stats(target_date: str = None) -> dict:
     if target_date is None:
         target_date = date.today().isoformat()
@@ -2593,6 +2593,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
