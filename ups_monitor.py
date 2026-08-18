@@ -1,3 +1,12 @@
+def _parse_local_ts(ts_str: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(ts_str)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
+    except Exception:
+        return datetime.now()
+
 """
 UPS Power Monitor v2.0.5
 Standalone Windows desktop app — monitors UPS directly via USB HID (Megatec/Voltronic protocol).
@@ -29,7 +38,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.3.3"
+VERSION = "v2.3.4"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -525,14 +534,14 @@ def get_daily_stats(target_date: str = None) -> dict:
         for i in range(1, len(rows)):
             w0, t0 = rows[i - 1]
             _,  t1 = rows[i]
-            dt = (datetime.fromisoformat(t1) - datetime.fromisoformat(t0)).total_seconds()
+            dt = (_parse_local_ts(t1) - _parse_local_ts(t0)).total_seconds()
             if dt <= MAX_READING_GAP:   # skip gaps — PC/app was off
                 kwh += (w0 / 1000.0) * (dt / 3600.0)
 
         # Partial interval from last reading to now (only for today)
         if rows and target_date == date.today().isoformat():
             last_w, last_t = rows[-1]
-            dt = (datetime.now() - datetime.fromisoformat(last_t)).total_seconds()
+            dt = (datetime.now() - _parse_local_ts(last_t)).total_seconds()
             dt = min(dt, settings.get("db_write_interval", 60) * 1.5)
             kwh += (last_w / 1000.0) * (dt / 3600.0)
 
@@ -2584,4 +2593,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
