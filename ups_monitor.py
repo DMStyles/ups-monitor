@@ -29,7 +29,7 @@ import pystray
 # ══════════════════════════════════════════════════════
 #  VERSION
 # ══════════════════════════════════════════════════════
-VERSION = "v2.3.7"
+VERSION = "v2.3.8"
 
 # ══════════════════════════════════════════════════════
 #  UPS MODEL DATABASE  (add more models here later)
@@ -1369,8 +1369,11 @@ def fast_poll_loop():
                                         # Recover slightly faster if voltage bounces back after a surge
                                         new_pct = (0.1 * new_pct) + (0.9 * old_pct)
                                 else:
-                                    # Light smoothing while charging
-                                    new_pct = (0.5 * new_pct) + (0.5 * old_pct)
+                                    # In Line mode, battery is charging. Capacity physically cannot drop.
+                                    if new_pct < old_pct:
+                                        new_pct = old_pct
+                                    else:
+                                        new_pct = (0.5 * new_pct) + (0.5 * old_pct)
                             
                             data["battery_capacity"] = round(new_pct, 1)
 
@@ -2594,6 +2597,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
