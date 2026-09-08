@@ -164,17 +164,28 @@ def sync_worker(db_path):
                 log.error(f"Cloud sync error: {e}")
         time.sleep(60) # Sync every 60 seconds
 
+last_synced_ts = None
+
 def sync_readings(db_path):
-    # Only fetch last 50 to avoid huge payloads on first sync
+    global last_synced_ts
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
-        c.execute('''SELECT ts, date, input_voltage, output_voltage, frequency, 
-                            load_percent, watts, battery_voltage, battery_capacity, 
-                            ups_mode, temperature 
-                     FROM readings ORDER BY ts DESC LIMIT 500''')
-        rows = c.fetchall()
-        
-    for r in rows[::-1]:
+        if last_synced_ts:
+            c.execute('''SELECT ts, date, input_voltage, output_voltage, frequency, 
+                                load_percent, watts, battery_voltage, battery_capacity, 
+                                ups_mode, temperature 
+                         FROM readings WHERE ts > ? ORDER BY ts ASC LIMIT 500''', (last_synced_ts,))
+            rows = c.fetchall()
+        else:
+            c.execute('''SELECT ts, date, input_voltage, output_voltage, frequency, 
+                                load_percent, watts, battery_voltage, battery_capacity, 
+                                ups_mode, temperature 
+                         FROM readings ORDER BY ts DESC LIMIT 60''')
+            rows = c.fetchall()[::-1]
+
+    if not rows: return
+
+    for r in rows:
         ts = r[0]
         try:
             dt = datetime.fromisoformat(ts)
@@ -182,18 +193,19 @@ def sync_readings(db_path):
                 ts = dt.astimezone().isoformat()
         except Exception:
             pass
-            
+
         data = {
             "ts": ts, "date": r[1], "input_voltage": r[2], "output_voltage": r[3],
             "frequency": r[4], "load_percent": r[5], "watts": r[6], "battery_voltage": r[7],
             "battery_capacity": r[8], "ups_mode": r[9], "temperature": r[10]
         }
-        # In a real app we'd track last_synced_ts, but for this demo we just upsert/insert
         try:
             supabase.table("readings").insert(data).execute()
+            last_synced_ts = r[0] # Successfully uploaded, update watermark
         except Exception as e:
             if "duplicate key" not in str(e):
-                pass # ignore duplicates if we didn't add a unique constraint
+                pass
+
 
 def sync_outages(db_path):
     with sqlite3.connect(db_path) as conn:
@@ -283,3 +295,4 @@ def sync_daily_stats(db_path):
 def start_sync_thread(db_path):
     t = threading.Thread(target=sync_worker, args=(db_path,), daemon=True)
     t.start()
+
